@@ -4,9 +4,15 @@ import pygame
 
 SIZE = WIDTH, HEIGHT = 600, 600
 screen = pygame.display.set_mode(SIZE)
-all_sprites = pygame.sprite.Group()
+bullets = pygame.sprite.Group()
+hero_g = pygame.sprite.Group()
+enemies = pygame.sprite.Group()
+SPAWNPOINT = 300, 300
 
 
+# этот файл предназначен для написания классов
+# и базовой проверки их работоспособности
+# в готовой игре он фигурировать не будет
 # используемые на данный момент спрайты будут заменены
 # как только всё остальное будет работать
 # пока что здесь первые попавшиеся картинки из интернета
@@ -32,11 +38,11 @@ class Hero(pygame.sprite.Sprite):
         super().__init__(*group)
         self.image = Hero.image
         self.rect = self.image.get_rect()
-        self.rect.x = 300
-        self.rect.y = 300
+        self.rect.x, self.rect.y = SPAWNPOINT
         self.v = 8
 
-    def move(self, keys):
+    def update(self):
+        keys = pygame.key.get_pressed()
         movement = [0, 0]
         if keys[pygame.K_UP]:
             movement[1] = -1
@@ -46,6 +52,9 @@ class Hero(pygame.sprite.Sprite):
             movement[0] = -1
         if keys[pygame.K_RIGHT]:
             movement[0] = 1
+        if pygame.sprite.spritecollideany(self, enemies) or \
+                pygame.sprite.spritecollideany(self, bullets):
+            self.rect.x, self.rect.y = SPAWNPOINT
         self.rect.x += movement[0] * self.v
         self.rect.y += movement[1] * self.v
 
@@ -53,20 +62,24 @@ class Hero(pygame.sprite.Sprite):
 class MeleeEnemy(pygame.sprite.Sprite):
     image = pygame.transform.scale(load_image('test_melee_enemy.png'), (30, 30))
 
-    def __init__(self, *group):
+    def __init__(self, x, y, v, *group):
         super().__init__(*group)
         self.image = MeleeEnemy.image
         self.rect = self.image.get_rect()
-        self.rect.x = 300
-        self.rect.y = 150
-        self.v = 2
+        self.rect.x = x
+        self.rect.y = y
+        self.v = v
+
+    def set_path(self, *phases):
         # первое число -- направление по X, второе -- по Y
         # третье -- время в секундах на это движение
-        self.path = [(1, 0, 2), (-1, 0, 2)]
+        self.path = list(phases)
         self.current_phase = 0
         self.phase_started = pygame.time.get_ticks()
 
-    def move(self):
+    def update(self):
+        if not self.path:
+            raise NameError
         movement = self.path[self.current_phase]
         self.rect.x += self.v * movement[0]
         self.rect.y += self.v * movement[1]
@@ -75,11 +88,54 @@ class MeleeEnemy(pygame.sprite.Sprite):
             self.phase_started = pygame.time.get_ticks()
 
 
+class RangeEnemy(pygame.sprite.Sprite):
+    image = pygame.transform.scale(load_image('test_range_enemy.png'), (30, 30))
+
+    def __init__(self, x, y, *group):
+        super().__init__(*group)
+        self.image = RangeEnemy.image
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.last_shot = pygame.time.get_ticks()
+        self.dt = 1
+
+    def shoot(self):
+        if pygame.time.get_ticks() - self.last_shot >= self.dt * 1000:
+            new_bullet = Bullet(self, bullets)
+            self.last_shot = pygame.time.get_ticks()
+
+    def update(self):
+        self.shoot()
+
+
+class Bullet(pygame.sprite.Sprite):
+    image = pygame.transform.scale(load_image('test_bullet.png'), (15, 15))
+
+    def __init__(self, sender, *group):
+        super().__init__(*group)
+        self.image = Bullet.image
+        self.rect = self.image.get_rect()
+        self.rect.x = sender.rect.x + 30
+        self.rect.y = sender.rect.y + 15
+        self.v = 10
+        self.dir = (1, 0)
+
+    def update(self):
+        self.rect.x += self.dir[0] * self.v
+        self.rect.y += self.dir[1] * self.v
+
+
 def main():
     pygame.init()
 
-    hero = Hero(all_sprites)
-    enemy = MeleeEnemy(all_sprites)
+    hero = Hero(hero_g)
+    enemy1 = MeleeEnemy(100, 100, 2, enemies)
+    enemy1.set_path((1, 0, 4), (0, 1, 4), (-1, 0, 4), (0, -1, 4))
+    enemy2 = MeleeEnemy(0, 0, 1, enemies)
+    enemy2.set_path((1, 1, 10), (-1, -1, 10))
+    renemy = RangeEnemy(50, 500, enemies)
+
     fps = 40
     clock = pygame.time.Clock()
     running = True
@@ -87,10 +143,15 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-        enemy.move()
-        hero.move(pygame.key.get_pressed())
+        hero.update()
+        enemies.update()
+        bullets.update()
+
         screen.fill((255, 255, 255))
-        all_sprites.draw(screen)
+        hero_g.draw(screen)
+        enemies.draw(screen)
+        bullets.draw(screen)
+
         pygame.display.flip()
         clock.tick(fps)
 
