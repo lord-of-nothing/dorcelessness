@@ -183,6 +183,20 @@ class Bullet(Unit):
         self.rect.y += self.dir[1] * self.v
 
 
+class Camera:
+    def __init__(self):
+        self.dx = 0
+        self.dy = 0
+
+    def apply(self, obj):
+        obj.rect.x += self.dx
+        obj.rect.y += self.dy
+
+    def update(self, target):
+        self.dx = -(target.rect.x + target.rect.w // 2 - WIDTH // 2)
+        self.dy = -(target.rect.y + target.rect.h // 2 - HEIGHT // 2)
+
+
 def main():
     pygame.init()
 
@@ -192,6 +206,7 @@ def main():
     # enemy2 = MeleeEnemy(0, 0, 1, enemies)
     # enemy2.set_path((1, 1, 10), (-1, -1, 10))
     # renemy = RangeEnemy(50, 500, enemies)
+    cam = Camera()
 
     zero_level = Level('test_level.txt')
     zero_level.load()
@@ -202,7 +217,11 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
         all_sprites.update()
+        cam.update(hero)
+        for sprite in all_sprites:
+            cam.apply(sprite)
         screen.fill((255, 255, 255))
         all_sprites.draw(screen)
 
