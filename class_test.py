@@ -4,10 +4,15 @@ import pygame
 
 SIZE = WIDTH, HEIGHT = 600, 600
 screen = pygame.display.set_mode(SIZE)
+
+all_sprites = pygame.sprite.Group()
+borders = pygame.sprite.Group()
 bullets = pygame.sprite.Group()
 hero_g = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
+
 SPAWNPOINT = 300, 300
+BLOCK_SIDE = 50
 
 
 # этот файл предназначен для написания классов
@@ -31,13 +36,53 @@ def load_image(name, colorkey=None):
     return image
 
 
-class Hero(pygame.sprite.Sprite):
+def load_level(name):
+    fullname = os.path.join('data', name)
+    if not os.path.isfile(fullname):
+        raise FileNotFoundError
+    with open(fullname, encoding='utf-8') as f:
+        level = [i[:-1] if i[-1] == '\n' else i for i in f]
+    return level
+
+
+class Unit(pygame.sprite.Sprite):
+    def __init__(self, *group):
+        super().__init__(all_sprites, *group)
+        self.image = self.__class__.image
+        self.rect = self.image.get_rect()
+
+
+class Wall(pygame.sprite.Sprite):
+    def __init__(self, x, y, im=None):
+        super().__init__(borders, all_sprites)
+        if im is None:
+            self.image = pygame.transform.scale(load_image('test_border.jpg'),
+                                                (BLOCK_SIDE, BLOCK_SIDE))
+        else:
+            self.image = im
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+
+
+class Level:
+    def __init__(self, filename):
+        self.map = load_level(filename)
+
+    def load(self):
+        for row in range(len(self.map)):
+            for block in range(len(self.map[row])):
+                if self.map[row][block] == '-':
+                    pass
+                elif self.map[row][block] == '#':
+                    Wall(block * BLOCK_SIDE, row * BLOCK_SIDE)
+
+
+class Hero(Unit):
     image = pygame.transform.scale(load_image('test_hero.png'), (30, 30))
 
     def __init__(self, *group):
         super().__init__(*group)
-        self.image = Hero.image
-        self.rect = self.image.get_rect()
         self.rect.x, self.rect.y = SPAWNPOINT
         self.v = 8
 
@@ -52,20 +97,36 @@ class Hero(pygame.sprite.Sprite):
             movement[0] = -1
         if keys[pygame.K_RIGHT]:
             movement[0] = 1
-        if pygame.sprite.spritecollideany(self, enemies) or \
-                pygame.sprite.spritecollideany(self, bullets):
-            self.rect.x, self.rect.y = SPAWNPOINT
+
+        # !!! ПЕРЕПИСАТЬ столкновение с врагами
+        # if pygame.sprite.spritecollideany(self, enemies) or \
+        #         pygame.sprite.spritecollideany(self, bullets):
+        #     self.rect.x, self.rect.y = SPAWNPOINT
+        #     return
+
+        # не ходим сквозь стены по горизонтали
         self.rect.x += movement[0] * self.v
+        wall = pygame.sprite.spritecollideany(self, borders)
+        if wall:
+            if movement[0] == 1:
+                self.rect.right = wall.rect.left
+            else:
+                self.rect.left = wall.rect.right
+        # и по вертикали
         self.rect.y += movement[1] * self.v
+        wall = pygame.sprite.spritecollideany(self, borders)
+        if wall:
+            if movement[1] == 1:
+                self.rect.bottom = wall.rect.top
+            else:
+                self.rect.top = wall.rect.bottom
 
 
-class MeleeEnemy(pygame.sprite.Sprite):
+class MeleeEnemy(Unit):
     image = pygame.transform.scale(load_image('test_melee_enemy.png'), (30, 30))
 
     def __init__(self, x, y, v, *group):
         super().__init__(*group)
-        self.image = MeleeEnemy.image
-        self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
         self.v = v
@@ -88,13 +149,11 @@ class MeleeEnemy(pygame.sprite.Sprite):
             self.phase_started = pygame.time.get_ticks()
 
 
-class RangeEnemy(pygame.sprite.Sprite):
+class RangeEnemy(Unit):
     image = pygame.transform.scale(load_image('test_range_enemy.png'), (30, 30))
 
     def __init__(self, x, y, *group):
         super().__init__(*group)
-        self.image = RangeEnemy.image
-        self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
         self.last_shot = pygame.time.get_ticks()
@@ -109,13 +168,11 @@ class RangeEnemy(pygame.sprite.Sprite):
         self.shoot()
 
 
-class Bullet(pygame.sprite.Sprite):
+class Bullet(Unit):
     image = pygame.transform.scale(load_image('test_bullet.png'), (15, 15))
 
     def __init__(self, sender, *group):
         super().__init__(*group)
-        self.image = Bullet.image
-        self.rect = self.image.get_rect()
         self.rect.x = sender.rect.x + 30
         self.rect.y = sender.rect.y + 15
         self.v = 10
@@ -130,12 +187,14 @@ def main():
     pygame.init()
 
     hero = Hero(hero_g)
-    enemy1 = MeleeEnemy(100, 100, 2, enemies)
-    enemy1.set_path((1, 0, 4), (0, 1, 4), (-1, 0, 4), (0, -1, 4))
-    enemy2 = MeleeEnemy(0, 0, 1, enemies)
-    enemy2.set_path((1, 1, 10), (-1, -1, 10))
-    renemy = RangeEnemy(50, 500, enemies)
+    # enemy1 = MeleeEnemy(100, 100, 2, enemies)
+    # enemy1.set_path((1, 0, 4), (0, 1, 4), (-1, 0, 4), (0, -1, 4))
+    # enemy2 = MeleeEnemy(0, 0, 1, enemies)
+    # enemy2.set_path((1, 1, 10), (-1, -1, 10))
+    # renemy = RangeEnemy(50, 500, enemies)
 
+    zero_level = Level('test_level.txt')
+    zero_level.load()
     fps = 40
     clock = pygame.time.Clock()
     running = True
@@ -143,14 +202,9 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-        hero.update()
-        enemies.update()
-        bullets.update()
-
+        all_sprites.update()
         screen.fill((255, 255, 255))
-        hero_g.draw(screen)
-        enemies.draw(screen)
-        bullets.draw(screen)
+        all_sprites.draw(screen)
 
         pygame.display.flip()
         clock.tick(fps)
