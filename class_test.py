@@ -118,6 +118,11 @@ class Hero(Unit):
         super().__init__(hero_g)
         self.rect.x, self.rect.y = SPAWNPOINT
         self.v = 8
+        self.hp = 4
+        # получив урон, герой становится бессмертным
+        # на несколько секунд, и проходит через врагов
+        self.immortal = False
+        self.imm_start = 0
 
     def update(self):
         keys = pygame.key.get_pressed()
@@ -136,40 +141,41 @@ class Hero(Unit):
             blt.kill()
             self.get_damage()
 
-        # чтобы враги ближнего боя сдвигали при столкновении
-        if movement == [0, 0]:
-            en = pygame.sprite.spritecollideany(self, enemies_melee)
-            if not en or type(en) != MeleeEnemy:
-                return
-            phase = en.path[en.current_phase]
-            if phase[0] == 1:
-                self.rect.left = en.rect.right + 5
-            else:
-                self.rect.right = en.rect.left - 5
-            if phase[1] == 1:
-                self.rect.top = en.rect.bottom + 5
-            else:
-                self.rect.bottom = en.rect.top - 5
+        enm = pygame.sprite.spritecollideany(self, enemies)
+        if enm:
+            self.get_damage()
 
         # не ходим сквозь стены и врагов по горизонтали
         self.rect.x += movement[0] * self.v
-        obstacle = check_hero_collision(self)
-        if obstacle:
+        wall = pygame.sprite.spritecollideany(self, borders)
+        if wall:
             if movement[0] == 1:
-                self.rect.right = obstacle.rect.left
+                self.rect.right = wall.rect.left
             elif movement[0] == -1:
-                self.rect.left = obstacle.rect.right
+                self.rect.left = wall.rect.right
 
         self.rect.y += movement[1] * self.v
-        obstacle = check_hero_collision(self)
-        if obstacle:
+        wall = pygame.sprite.spritecollideany(self, borders)
+        if wall:
             if movement[1] == 1:
-                self.rect.bottom = obstacle.rect.top
+                self.rect.bottom = wall.rect.top
             elif movement[1] == -1:
-                self.rect.top = obstacle.rect.bottom
+                self.rect.top = wall.rect.bottom
+
+        if self.immortal and \
+                pygame.time.get_ticks() - self.imm_start >= 2000:
+            self.immortal = False
+            self.image.set_alpha(255)
 
     def get_damage(self):
-        pass
+        if not self.immortal:
+            self.hp -= 1
+            self.immortal = True
+            self.imm_start = pygame.time.get_ticks()
+            self.image.set_alpha(128)
+
+    def is_alive(self):
+        return self.hp > 0
 
 
 class MeleeEnemy(Unit):
@@ -226,6 +232,30 @@ class RangeEnemy(Unit):
             self.shoot()
 
 
+class Overlay:
+    def __init__(self, hero):
+        self.hero = hero
+        self.color = pygame.Color("gray31")
+        self.image = load_image('hp.png')
+        self.w = 140
+        self.h = 75
+        self.x = WIDTH - self.w
+        self.y = WIDTH - self.h
+        # не удалось найти информацию о лицензии данного шрифта
+        # вроде как он бесплатный для личного использования
+        # если окажется, что это не так, заменю на что-то другое
+        self.font = pygame.font.Font('data/BadFontPixel.ttf', 55)
+
+    def show(self):
+        border = pygame.Surface((self.w, self.h))
+        border.fill(self.color)
+        border.blit(self.image, (10, 10))
+        txt = self.font.render(str(self.hero.hp), True,
+                               (255, 255, 255))
+        border.blit(txt, (self.w - txt.get_width() - 10, 10))
+        screen.blit(border, (self.x, self.y))
+
+
 class Bullet(Unit):
     image = load_image('test_bullet.png')
 
@@ -270,6 +300,8 @@ def main():
     zero_level = Level('test_level.txt')
     zero_level.load()
 
+    overlay = Overlay(hero)
+
     fps = 50
     clock = pygame.time.Clock()
     running = True
@@ -278,6 +310,9 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
 
+        if not hero.is_alive():
+            running = False
+
         all_sprites.update()
         cam.update(hero)
         for sprite in all_sprites:
@@ -285,6 +320,7 @@ def main():
 
         screen.fill((255, 255, 255))
         all_sprites.draw(screen)
+        overlay.show()
 
         pygame.display.flip()
         clock.tick(fps)
