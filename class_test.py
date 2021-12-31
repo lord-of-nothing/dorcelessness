@@ -39,12 +39,40 @@ def load_image(name, colorkey=None):
 
 
 def load_level(name):
+    # получаем карту уровня
     fullname = os.path.join('data', name)
     if not os.path.isfile(fullname):
         raise FileNotFoundError
     with open(fullname, encoding='utf-8') as f:
         level = [i[:-1] if i[-1] == '\n' else i for i in f]
-    return level
+
+    # получаем информацию о траекториях врагов ближнего боя
+    fullname = os.path.join('data', 'm_' + name)
+    if not os.path.isfile(fullname):
+        raise FileNotFoundError
+    with open(fullname, encoding='utf-8') as f:
+        melees = dict()
+        for en in f.readlines():
+            en = en.replace('\n', '').split(' -> ')
+            melees[en[0]] = []
+            melees[en[0]].append(int(en[1]))
+
+            moves = [tuple([int(i) for i in move.split(':')]) for move in en[2].split(' / ')]
+            for move in moves:
+                melees[en[0]].append(move)
+
+    return level, melees
+
+
+def check_hero_collision(hero):
+    """Вспомогательная функция, чтобы не писать
+    код проверки героя на столкновения дважды."""
+    obstacle = pygame.sprite.spritecollideany(hero, enemies)
+    if obstacle:
+        hero.get_damage()
+    else:
+        obstacle = pygame.sprite.spritecollideany(hero, borders)
+    return obstacle
 
 
 class Unit(pygame.sprite.Sprite):
@@ -58,8 +86,7 @@ class Wall(pygame.sprite.Sprite):
     def __init__(self, x, y, im=None):
         super().__init__(borders, all_sprites)
         if im is None:
-            self.image = pygame.transform.scale(load_image('test_border.jpg'),
-                                                (BLOCK_SIDE, BLOCK_SIDE))
+            self.image = load_image('test_wall.jpg')
         else:
             self.image = im
         self.rect = self.image.get_rect()
@@ -69,7 +96,7 @@ class Wall(pygame.sprite.Sprite):
 
 class Level:
     def __init__(self, filename):
-        self.map = load_level(filename)
+        self.map, self.melees = load_level(filename)
 
     def load(self):
         for row in range(len(self.map)):
@@ -79,10 +106,13 @@ class Level:
                     Wall(block * BLOCK_SIDE, row * BLOCK_SIDE)
                 elif el in "><^_":
                     RangeEnemy(block * BLOCK_SIDE, row * BLOCK_SIDE, el)
+                elif el.isalpha():
+                    MeleeEnemy(block * BLOCK_SIDE, row * BLOCK_SIDE,
+                               self.melees[el][0], self.melees[el][1:])
 
 
 class Hero(Unit):
-    image = pygame.transform.scale(load_image('test_hero.png'), (30, 30))
+    image = load_image('test_hero.png')
 
     def __init__(self):
         super().__init__(hero_g)
@@ -101,48 +131,60 @@ class Hero(Unit):
         if keys[pygame.K_RIGHT]:
             movement[0] = 1
 
-        blt = pygame.sprite.spritecollide(self, bullets, True)
+        blt = pygame.sprite.spritecollideany(self, bullets)
         if blt:
-            # здесь будет получение урона
-            pass
+            blt.kill()
+            self.get_damage()
 
-        # не ходим сквозь стены по горизонтали
+        # чтобы враги ближнего боя сдвигали при столкновении
+        if movement == [0, 0]:
+            en = pygame.sprite.spritecollideany(self, enemies_melee)
+            if not en or type(en) != MeleeEnemy:
+                return
+            phase = en.path[en.current_phase]
+            if phase[0] == 1:
+                self.rect.left = en.rect.right + 5
+            else:
+                self.rect.right = en.rect.left - 5
+            if phase[1] == 1:
+                self.rect.top = en.rect.bottom + 5
+            else:
+                self.rect.bottom = en.rect.top - 5
+
+        # не ходим сквозь стены и врагов по горизонтали
         self.rect.x += movement[0] * self.v
-        wall = pygame.sprite.spritecollideany(self, borders)
-        if wall:
+        obstacle = check_hero_collision(self)
+        if obstacle:
             if movement[0] == 1:
-                self.rect.right = wall.rect.left
-            else:
-                self.rect.left = wall.rect.right
-        # и по вертикали
+                self.rect.right = obstacle.rect.left
+            elif movement[0] == -1:
+                self.rect.left = obstacle.rect.right
+
         self.rect.y += movement[1] * self.v
-        wall = pygame.sprite.spritecollideany(self, borders)
-        if wall:
+        obstacle = check_hero_collision(self)
+        if obstacle:
             if movement[1] == 1:
-                self.rect.bottom = wall.rect.top
-            else:
-                self.rect.top = wall.rect.bottom
+                self.rect.bottom = obstacle.rect.top
+            elif movement[1] == -1:
+                self.rect.top = obstacle.rect.bottom
+
+    def get_damage(self):
+        pass
 
 
 class MeleeEnemy(Unit):
-    image = pygame.transform.scale(load_image('test_melee_enemy.png'), (30, 30))
+    image = load_image('test_melee_enemy.png')
 
-    def __init__(self, x, y, v):
+    def __init__(self, x, y, v, phases):
         super().__init__(enemies, enemies_melee)
         self.rect.x = x
         self.rect.y = y
         self.v = v
-
-    def set_path(self, *phases):
-        # первое число -- направление по X, второе -- по Y
-        # третье -- время в секундах на это движение
-        self.path = list(phases)
+        self.path = phases
         self.current_phase = 0
         self.phase_started = pygame.time.get_ticks()
 
     def update(self):
-        if not self.path:
-            raise NameError
         movement = self.path[self.current_phase]
         self.rect.x += self.v * movement[0]
         self.rect.y += self.v * movement[1]
@@ -152,7 +194,7 @@ class MeleeEnemy(Unit):
 
 
 class RangeEnemy(Unit):
-    image = pygame.transform.scale(load_image('test_range_enemy.png'), (BLOCK_SIDE, BLOCK_SIDE))
+    image = load_image('test_range_enemy.png')
 
     def __init__(self, x, y, type):
         super().__init__(enemies, enemies_ranged)
@@ -185,7 +227,7 @@ class RangeEnemy(Unit):
 
 
 class Bullet(Unit):
-    image = pygame.transform.scale(load_image('test_bullet.png'), (15, 15))
+    image = load_image('test_bullet.png')
 
     def __init__(self, sender, dirx, diry):
         # изображение пули не меняет ориентацию в зависимости
@@ -228,7 +270,7 @@ def main():
     zero_level = Level('test_level.txt')
     zero_level.load()
 
-    fps = 40
+    fps = 50
     clock = pygame.time.Clock()
     running = True
     while running:
