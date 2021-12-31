@@ -10,6 +10,8 @@ borders = pygame.sprite.Group()
 bullets = pygame.sprite.Group()
 hero_g = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
+enemies_ranged = pygame.sprite.Group()
+enemies_melee = pygame.sprite.Group()
 
 SPAWNPOINT = 300, 300
 BLOCK_SIDE = 50
@@ -72,17 +74,18 @@ class Level:
     def load(self):
         for row in range(len(self.map)):
             for block in range(len(self.map[row])):
-                if self.map[row][block] == '-':
-                    pass
-                elif self.map[row][block] == '#':
+                el = self.map[row][block]
+                if el == '#':
                     Wall(block * BLOCK_SIDE, row * BLOCK_SIDE)
+                elif el in "><^_":
+                    RangeEnemy(block * BLOCK_SIDE, row * BLOCK_SIDE, el)
 
 
 class Hero(Unit):
     image = pygame.transform.scale(load_image('test_hero.png'), (30, 30))
 
-    def __init__(self, *group):
-        super().__init__(*group)
+    def __init__(self):
+        super().__init__(hero_g)
         self.rect.x, self.rect.y = SPAWNPOINT
         self.v = 8
 
@@ -98,11 +101,10 @@ class Hero(Unit):
         if keys[pygame.K_RIGHT]:
             movement[0] = 1
 
-        # !!! ПЕРЕПИСАТЬ столкновение с врагами
-        # if pygame.sprite.spritecollideany(self, enemies) or \
-        #         pygame.sprite.spritecollideany(self, bullets):
-        #     self.rect.x, self.rect.y = SPAWNPOINT
-        #     return
+        blt = pygame.sprite.spritecollide(self, bullets, True)
+        if blt:
+            # здесь будет получение урона
+            pass
 
         # не ходим сквозь стены по горизонтали
         self.rect.x += movement[0] * self.v
@@ -125,8 +127,8 @@ class Hero(Unit):
 class MeleeEnemy(Unit):
     image = pygame.transform.scale(load_image('test_melee_enemy.png'), (30, 30))
 
-    def __init__(self, x, y, v, *group):
-        super().__init__(*group)
+    def __init__(self, x, y, v):
+        super().__init__(enemies, enemies_melee)
         self.rect.x = x
         self.rect.y = y
         self.v = v
@@ -150,37 +152,57 @@ class MeleeEnemy(Unit):
 
 
 class RangeEnemy(Unit):
-    image = pygame.transform.scale(load_image('test_range_enemy.png'), (30, 30))
+    image = pygame.transform.scale(load_image('test_range_enemy.png'), (BLOCK_SIDE, BLOCK_SIDE))
 
-    def __init__(self, x, y, *group):
-        super().__init__(*group)
+    def __init__(self, x, y, type):
+        super().__init__(enemies, enemies_ranged)
         self.rect.x = x
         self.rect.y = y
         self.last_shot = pygame.time.get_ticks()
         self.dt = 1
+        self.type = type
+        if self.type == '<':
+            self.image = pygame.transform.flip(self.image, True, False)
+        elif self.type == '^':
+            self.image = pygame.transform.rotate(self.image, 90)
+        elif self.type == '_':
+            self.image = pygame.transform.rotate(self.image, -90)
 
     def shoot(self):
-        if pygame.time.get_ticks() - self.last_shot >= self.dt * 1000:
-            new_bullet = Bullet(self, bullets)
-            self.last_shot = pygame.time.get_ticks()
+        if self.type == '>':
+            Bullet(self, 1, 0)
+        elif self.type == '<':
+            Bullet(self, -1, 0)
+        elif self.type == '^':
+            Bullet(self, 0, -1)
+        elif self.type == '_':
+            Bullet(self, 0, 1)
+        self.last_shot = pygame.time.get_ticks()
 
     def update(self):
-        self.shoot()
+        if pygame.time.get_ticks() - self.last_shot >= self.dt * 1000:
+            self.shoot()
 
 
 class Bullet(Unit):
     image = pygame.transform.scale(load_image('test_bullet.png'), (15, 15))
 
-    def __init__(self, sender, *group):
-        super().__init__(*group)
+    def __init__(self, sender, dirx, diry):
+        # изображение пули не меняет ориентацию в зависимости
+        # от направления движения, т.к. планируется, что
+        # в конечной версии пули будут центрально симметричными
+        super().__init__(enemies, bullets)
         self.rect.x = sender.rect.x + 30
         self.rect.y = sender.rect.y + 15
         self.v = 10
-        self.dir = (1, 0)
+        self.dir = dirx, diry
 
     def update(self):
         self.rect.x += self.dir[0] * self.v
         self.rect.y += self.dir[1] * self.v
+
+        if pygame.sprite.spritecollideany(self, borders):
+            self.kill()
 
 
 class Camera:
@@ -200,16 +222,12 @@ class Camera:
 def main():
     pygame.init()
 
-    hero = Hero(hero_g)
-    # enemy1 = MeleeEnemy(100, 100, 2, enemies)
-    # enemy1.set_path((1, 0, 4), (0, 1, 4), (-1, 0, 4), (0, -1, 4))
-    # enemy2 = MeleeEnemy(0, 0, 1, enemies)
-    # enemy2.set_path((1, 1, 10), (-1, -1, 10))
-    # renemy = RangeEnemy(50, 500, enemies)
+    hero = Hero()
     cam = Camera()
 
     zero_level = Level('test_level.txt')
     zero_level.load()
+
     fps = 40
     clock = pygame.time.Clock()
     running = True
@@ -222,6 +240,7 @@ def main():
         cam.update(hero)
         for sprite in all_sprites:
             cam.apply(sprite)
+
         screen.fill((255, 255, 255))
         all_sprites.draw(screen)
 
