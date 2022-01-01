@@ -1,17 +1,15 @@
 import os
 import pygame
 
-
 SIZE = WIDTH, HEIGHT = 600, 600
 screen = pygame.display.set_mode(SIZE)
 
 all_sprites = pygame.sprite.Group()
-borders = pygame.sprite.Group()
+obstacles = pygame.sprite.Group()
 bullets = pygame.sprite.Group()
 hero_g = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
-enemies_ranged = pygame.sprite.Group()
-enemies_melee = pygame.sprite.Group()
+boss_keys = pygame.sprite.Group()
 
 SPAWNPOINT = 300, 300
 BLOCK_SIDE = 50
@@ -38,7 +36,7 @@ def load_image(name, colorkey=None):
     return image
 
 
-def load_level(name):
+def level_from_file(name):
     # получаем карту уровня
     fullname = os.path.join('data', name)
     if not os.path.isfile(fullname):
@@ -64,15 +62,79 @@ def load_level(name):
     return level, melees
 
 
-def check_hero_collision(hero):
-    """Вспомогательная функция, чтобы не писать
-    код проверки героя на столкновения дважды."""
-    obstacle = pygame.sprite.spritecollideany(hero, enemies)
-    if obstacle:
-        hero.get_damage()
-    else:
-        obstacle = pygame.sprite.spritecollideany(hero, borders)
-    return obstacle
+class Level:
+    def __init__(self, filename):
+        self.map, self.melees = level_from_file(filename)
+
+    def load(self):
+        for row in range(len(self.map)):
+            for block in range(len(self.map[row])):
+                el = self.map[row][block]
+                x = block * BLOCK_SIDE
+                y = row * BLOCK_SIDE
+                if el == '#':
+                    Wall(x, y)
+                elif el in "><^_":
+                    RangeEnemy(x, y, el)
+                elif el == '?':
+                    Key(x, y)
+                elif el.isalpha():
+                    MeleeEnemy(x, y, self.melees[el][0],
+                               self.melees[el][1:])
+
+
+class Overlay:
+    def __init__(self, hero):
+        self.hero = hero
+        self.color = pygame.Color("gray31")
+        self.image_hp = load_image('hp.png')
+        self.image_key = load_image('key_large.png')
+        # не удалось найти информацию о лицензии данного шрифта
+        # вроде как он бесплатный для личного использования
+        # если окажется, что это не так, заменю на что-то другое
+        self.font_file = 'data/BadFontPixel.ttf'
+
+        self.w = 140
+        self.h = self.image_key.get_height() + \
+                 self.image_hp.get_height() + 30
+        self.x = WIDTH - self.w
+        self.y = HEIGHT - self.h
+
+    def show(self):
+        bg = pygame.Surface((self.w, self.h))
+        bg.fill(self.color)
+
+        # ключей собрано
+        bg.blit(self.image_key, (10, 10))
+        font = pygame.font.Font(self.font_file,
+                                self.image_key.get_height())
+        txt = font.render(f"{self.hero.keys}/4", True,
+                          (255, 255, 255))
+        bg.blit(txt, (self.w - txt.get_width() - 10, 10))
+
+        # жизней осталось
+        dist_from_top = self.image_key.get_height() + 20
+        bg.blit(self.image_hp, (10, dist_from_top))
+        font = pygame.font.Font(self.font_file,
+                                self.image_hp.get_height())
+        txt = font.render(str(self.hero.hp), True, (255, 255, 255))
+        bg.blit(txt, (self.w - txt.get_width() - 10, dist_from_top))
+
+        screen.blit(bg, (self.x, self.y))
+
+
+class Camera:
+    def __init__(self):
+        self.dx = 0
+        self.dy = 0
+
+    def apply(self, obj):
+        obj.rect.x += self.dx
+        obj.rect.y += self.dy
+
+    def update(self, target):
+        self.dx = -(target.rect.x + target.rect.w // 2 - WIDTH // 2)
+        self.dy = -(target.rect.y + target.rect.h // 2 - HEIGHT // 2)
 
 
 class Unit(pygame.sprite.Sprite):
@@ -84,9 +146,9 @@ class Unit(pygame.sprite.Sprite):
 
 class Wall(pygame.sprite.Sprite):
     def __init__(self, x, y, im=None):
-        super().__init__(borders, all_sprites)
+        super().__init__(obstacles, all_sprites)
         if im is None:
-            self.image = load_image('test_wall.jpg')
+            self.image = load_image('wall.jpg')
         else:
             self.image = im
         self.rect = self.image.get_rect()
@@ -94,25 +156,8 @@ class Wall(pygame.sprite.Sprite):
         self.rect.y = y
 
 
-class Level:
-    def __init__(self, filename):
-        self.map, self.melees = load_level(filename)
-
-    def load(self):
-        for row in range(len(self.map)):
-            for block in range(len(self.map[row])):
-                el = self.map[row][block]
-                if el == '#':
-                    Wall(block * BLOCK_SIDE, row * BLOCK_SIDE)
-                elif el in "><^_":
-                    RangeEnemy(block * BLOCK_SIDE, row * BLOCK_SIDE, el)
-                elif el.isalpha():
-                    MeleeEnemy(block * BLOCK_SIDE, row * BLOCK_SIDE,
-                               self.melees[el][0], self.melees[el][1:])
-
-
 class Hero(Unit):
-    image = load_image('test_hero.png')
+    image = load_image('hero.png')
 
     def __init__(self):
         super().__init__(hero_g)
@@ -123,6 +168,7 @@ class Hero(Unit):
         # на несколько секунд, и проходит через врагов
         self.immortal = False
         self.imm_start = 0
+        self.keys = 0
 
     def update(self):
         keys = pygame.key.get_pressed()
@@ -136,6 +182,15 @@ class Hero(Unit):
         if keys[pygame.K_RIGHT]:
             movement[0] = 1
 
+        key = pygame.sprite.spritecollideany(self, boss_keys)
+        if key and not self.immortal and keys[pygame.K_e]:
+            self.keys += 1
+            key.kill()
+            if self.keys == 4:
+                self.hp = 0
+            # пока что завершаем игру, если все ключи собраны
+            # ибо то, для чего нужны ключи, ещё не написано(
+
         blt = pygame.sprite.spritecollideany(self, bullets)
         if blt:
             blt.kill()
@@ -147,7 +202,7 @@ class Hero(Unit):
 
         # не ходим сквозь стены и врагов по горизонтали
         self.rect.x += movement[0] * self.v
-        wall = pygame.sprite.spritecollideany(self, borders)
+        wall = pygame.sprite.spritecollideany(self, obstacles)
         if wall:
             if movement[0] == 1:
                 self.rect.right = wall.rect.left
@@ -155,7 +210,7 @@ class Hero(Unit):
                 self.rect.left = wall.rect.right
 
         self.rect.y += movement[1] * self.v
-        wall = pygame.sprite.spritecollideany(self, borders)
+        wall = pygame.sprite.spritecollideany(self, obstacles)
         if wall:
             if movement[1] == 1:
                 self.rect.bottom = wall.rect.top
@@ -179,10 +234,10 @@ class Hero(Unit):
 
 
 class MeleeEnemy(Unit):
-    image = load_image('test_melee_enemy.png')
+    image = load_image('melee_enemy.png')
 
     def __init__(self, x, y, v, phases):
-        super().__init__(enemies, enemies_melee)
+        super().__init__(enemies)
         self.rect.x = x
         self.rect.y = y
         self.v = v
@@ -200,10 +255,10 @@ class MeleeEnemy(Unit):
 
 
 class RangeEnemy(Unit):
-    image = load_image('test_range_enemy.png')
+    image = load_image('range_enemy.png')
 
     def __init__(self, x, y, type):
-        super().__init__(enemies, enemies_ranged)
+        super().__init__(enemies)
         self.rect.x = x
         self.rect.y = y
         self.last_shot = pygame.time.get_ticks()
@@ -232,38 +287,14 @@ class RangeEnemy(Unit):
             self.shoot()
 
 
-class Overlay:
-    def __init__(self, hero):
-        self.hero = hero
-        self.color = pygame.Color("gray31")
-        self.image = load_image('hp.png')
-        self.w = 140
-        self.h = 75
-        self.x = WIDTH - self.w
-        self.y = WIDTH - self.h
-        # не удалось найти информацию о лицензии данного шрифта
-        # вроде как он бесплатный для личного использования
-        # если окажется, что это не так, заменю на что-то другое
-        self.font = pygame.font.Font('data/BadFontPixel.ttf', 55)
-
-    def show(self):
-        border = pygame.Surface((self.w, self.h))
-        border.fill(self.color)
-        border.blit(self.image, (10, 10))
-        txt = self.font.render(str(self.hero.hp), True,
-                               (255, 255, 255))
-        border.blit(txt, (self.w - txt.get_width() - 10, 10))
-        screen.blit(border, (self.x, self.y))
-
-
 class Bullet(Unit):
-    image = load_image('test_bullet.png')
+    image = load_image('bullet.png')
 
     def __init__(self, sender, dirx, diry):
         # изображение пули не меняет ориентацию в зависимости
         # от направления движения, т.к. планируется, что
         # в конечной версии пули будут центрально симметричными
-        super().__init__(enemies, bullets)
+        super().__init__(bullets)
         self.rect.x = sender.rect.x + 30
         self.rect.y = sender.rect.y + 15
         self.v = 10
@@ -273,22 +304,17 @@ class Bullet(Unit):
         self.rect.x += self.dir[0] * self.v
         self.rect.y += self.dir[1] * self.v
 
-        if pygame.sprite.spritecollideany(self, borders):
+        if pygame.sprite.spritecollideany(self, obstacles):
             self.kill()
 
 
-class Camera:
-    def __init__(self):
-        self.dx = 0
-        self.dy = 0
+class Key(Unit):
+    image = load_image('key_small.png')
 
-    def apply(self, obj):
-        obj.rect.x += self.dx
-        obj.rect.y += self.dy
-
-    def update(self, target):
-        self.dx = -(target.rect.x + target.rect.w // 2 - WIDTH // 2)
-        self.dy = -(target.rect.y + target.rect.h // 2 - HEIGHT // 2)
+    def __init__(self, x, y):
+        super().__init__(boss_keys)
+        self.rect.x = x
+        self.rect.y = y
 
 
 def main():
