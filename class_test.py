@@ -10,6 +10,7 @@ bullets = pygame.sprite.Group()
 hero_g = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
 boss_keys = pygame.sprite.Group()
+background = pygame.sprite.Group()
 
 SPAWNPOINT = 300, 300
 BLOCK_SIDE = 50
@@ -72,6 +73,9 @@ class Level:
                 el = self.map[row][block]
                 x = block * BLOCK_SIDE
                 y = row * BLOCK_SIDE
+                if el == '-':
+                    continue
+                Floor(x, y)
                 if el == '#':
                     Wall(x, y)
                 elif el in "><^_":
@@ -138,30 +142,34 @@ class Camera:
 
 
 class Unit(pygame.sprite.Sprite):
-    def __init__(self, *group):
+    def __init__(self, x, y, *group):
         super().__init__(all_sprites, *group)
         self.image = self.__class__.image
         self.rect = self.image.get_rect()
-
-
-class Wall(pygame.sprite.Sprite):
-    def __init__(self, x, y, im=None):
-        super().__init__(obstacles, all_sprites)
-        if im is None:
-            self.image = load_image('wall.jpg')
-        else:
-            self.image = im
-        self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
+
+
+class Wall(Unit):
+    image = load_image('wall.jpg')
+
+    def __init__(self, x, y):
+        super().__init__(x, y, obstacles)
+
+
+class Floor(Unit):
+    image = load_image('floor.jpg')
+
+    def __init__(self, x, y):
+        super().__init__(x, y, background)
+        self.remove(all_sprites)
 
 
 class Hero(Unit):
     image = load_image('hero.png')
 
     def __init__(self):
-        super().__init__(hero_g)
-        self.rect.x, self.rect.y = SPAWNPOINT
+        super().__init__(*SPAWNPOINT, hero_g)
         self.v = 8
         self.hp = 4
         # получив урон, герой становится бессмертным
@@ -237,9 +245,7 @@ class MeleeEnemy(Unit):
     image = load_image('melee_enemy.png')
 
     def __init__(self, x, y, v, phases):
-        super().__init__(enemies)
-        self.rect.x = x
-        self.rect.y = y
+        super().__init__(x, y, enemies)
         self.v = v
         self.path = phases
         self.current_phase = 0
@@ -258,9 +264,7 @@ class RangeEnemy(Unit):
     image = load_image('range_enemy.png')
 
     def __init__(self, x, y, type):
-        super().__init__(enemies)
-        self.rect.x = x
-        self.rect.y = y
+        super().__init__(x, y, enemies)
         self.last_shot = pygame.time.get_ticks()
         self.dt = 1
         self.type = type
@@ -294,9 +298,8 @@ class Bullet(Unit):
         # изображение пули не меняет ориентацию в зависимости
         # от направления движения, т.к. планируется, что
         # в конечной версии пули будут центрально симметричными
-        super().__init__(bullets)
-        self.rect.x = sender.rect.x + 30
-        self.rect.y = sender.rect.y + 15
+        super().__init__(sender.rect.x + BLOCK_SIDE // 2,
+                         sender.rect.y + 10, bullets)
         self.v = 10
         self.dir = dirx, diry
 
@@ -312,9 +315,7 @@ class Key(Unit):
     image = load_image('key_small.png')
 
     def __init__(self, x, y):
-        super().__init__(boss_keys)
-        self.rect.x = x
-        self.rect.y = y
+        super().__init__(x, y, boss_keys)
 
 
 def main():
@@ -343,8 +344,11 @@ def main():
         cam.update(hero)
         for sprite in all_sprites:
             cam.apply(sprite)
+        for tile in background:
+            cam.apply(tile)
 
-        screen.fill((255, 255, 255))
+        screen.fill((0, 0, 0))
+        background.draw(screen)
         all_sprites.draw(screen)
         overlay.show()
 
