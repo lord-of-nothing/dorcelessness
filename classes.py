@@ -12,16 +12,16 @@ enemies = pygame.sprite.Group()
 boss_keys = pygame.sprite.Group()
 background = pygame.sprite.Group()
 
-SPAWNPOINT = 300, 300
-BLOCK_SIDE = 50
+SPAWNPOINT = 0, 0
+BLOCK_SIDE = 32
 
 
 # этот файл предназначен для написания классов
 # и базовой проверки их работоспособности
-# в готовой игре он фигурировать не будет
 # используемые на данный момент спрайты будут заменены
 # как только всё остальное будет работать
-# пока что здесь первые попавшиеся картинки из интернета
+# пока что используется симпатичный, но не соответствующий
+# тематике игры пак ассетов из интернета
 def load_image(name, colorkey=None):
     fullname = os.path.join('data', name)
     if not os.path.isfile(fullname):
@@ -68,6 +68,7 @@ class Level:
         self.map, self.melees = level_from_file(filename)
 
     def load(self):
+        global SPAWNPOINT
         for row in range(len(self.map)):
             for block in range(len(self.map[row])):
                 el = self.map[row][block]
@@ -76,9 +77,11 @@ class Level:
                 if el == '-':
                     continue
                 Floor(x, y)
-                if el == '#':
+                if el == '@':
+                    SPAWNPOINT = x, y
+                elif el == '#':
                     Wall(x, y)
-                elif el in "><^_":
+                elif el in "><^_%":
                     RangeEnemy(x, y, el)
                 elif el == '?':
                     Key(x, y)
@@ -148,17 +151,18 @@ class Unit(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
+        self.mask = pygame.mask.from_surface(self.image)
 
 
 class Wall(Unit):
-    image = load_image('wall.jpg')
+    image = load_image('wall.png')
 
     def __init__(self, x, y):
         super().__init__(x, y, obstacles)
 
 
 class Floor(Unit):
-    image = load_image('floor.jpg')
+    image = load_image('floor.png')
 
     def __init__(self, x, y):
         super().__init__(x, y, background)
@@ -179,6 +183,7 @@ class Hero(Unit):
         self.keys = 0
 
     def update(self):
+        # смотрим, куда нужно пойти
         keys = pygame.key.get_pressed()
         movement = [0, 0]
         if keys[pygame.K_UP]:
@@ -190,6 +195,7 @@ class Hero(Unit):
         if keys[pygame.K_RIGHT]:
             movement[0] = 1
 
+        # сбор ключей
         key = pygame.sprite.spritecollideany(self, boss_keys)
         if key and not self.immortal and keys[pygame.K_e]:
             self.keys += 1
@@ -199,13 +205,16 @@ class Hero(Unit):
             # пока что завершаем игру, если все ключи собраны
             # ибо то, для чего нужны ключи, ещё не написано(
 
+        # проверяем, не поймали ли пулю
         blt = pygame.sprite.spritecollideany(self, bullets)
-        if blt:
-            blt.kill()
-            self.get_damage()
+        if blt and not self.immortal:
+            if pygame.sprite.collide_mask(self, blt):
+                blt.kill()
+                self.get_damage()
 
+        # проверка на контакт с врагами
         enm = pygame.sprite.spritecollideany(self, enemies)
-        if enm:
+        if enm and pygame.sprite.collide_mask(self, enm):
             self.get_damage()
 
         # не ходим сквозь стены и врагов по горизонтали
@@ -225,6 +234,7 @@ class Hero(Unit):
             elif movement[1] == -1:
                 self.rect.top = wall.rect.bottom
 
+        # завершаем период бессмертия (если уже пора)
         if self.immortal and \
                 pygame.time.get_ticks() - self.imm_start >= 2000:
             self.immortal = False
@@ -267,23 +277,36 @@ class RangeEnemy(Unit):
         super().__init__(x, y, enemies)
         self.last_shot = pygame.time.get_ticks()
         self.dt = 1
+        self.v_bullet = 10
         self.type = type
         if self.type == '<':
             self.image = pygame.transform.flip(self.image, True, False)
+            self.last_shot += 250
         elif self.type == '^':
             self.image = pygame.transform.rotate(self.image, 90)
+            self.last_shot += 500
         elif self.type == '_':
             self.image = pygame.transform.rotate(self.image, -90)
+            self.last_shot += 750
+        elif self.type == '%':
+            self.image = load_image('circular_range_enemy.png')
+            self.last_shot += 1000
+            self.v_bullet = 5
 
     def shoot(self):
-        if self.type == '>':
-            Bullet(self, 1, 0)
-        elif self.type == '<':
-            Bullet(self, -1, 0)
-        elif self.type == '^':
-            Bullet(self, 0, -1)
-        elif self.type == '_':
-            Bullet(self, 0, 1)
+        if self.type == '>' or self.type == '%':
+            Bullet(self, 1, 0, self.v_bullet)
+        if self.type == '<' or self.type == '%':
+            Bullet(self, -1, 0, self.v_bullet)
+        if self.type == '^' or self.type == '%':
+            Bullet(self, 0, -1, self.v_bullet)
+        if self.type == '_' or self.type == '%':
+            Bullet(self, 0, 1, self.v_bullet)
+        if self.type == '%':
+            Bullet(self, 1, 1, self.v_bullet)
+            Bullet(self, 1, -1, self.v_bullet)
+            Bullet(self, -1, 1, self.v_bullet)
+            Bullet(self, -1, -1, self.v_bullet)
         self.last_shot = pygame.time.get_ticks()
 
     def update(self):
@@ -294,13 +317,13 @@ class RangeEnemy(Unit):
 class Bullet(Unit):
     image = load_image('bullet.png')
 
-    def __init__(self, sender, dirx, diry):
+    def __init__(self, sender, dirx, diry, v):
         # изображение пули не меняет ориентацию в зависимости
         # от направления движения, т.к. планируется, что
         # в конечной версии пули будут центрально симметричными
         super().__init__(sender.rect.x + BLOCK_SIDE // 2,
-                         sender.rect.y + 10, bullets)
-        self.v = 10
+                         sender.rect.y + 8, bullets)
+        self.v = v
         self.dir = dirx, diry
 
     def update(self):
@@ -321,11 +344,11 @@ class Key(Unit):
 def main():
     pygame.init()
 
-    hero = Hero()
-    cam = Camera()
-
     zero_level = Level('test_level.txt')
     zero_level.load()
+
+    hero = Hero()
+    cam = Camera()
 
     overlay = Overlay(hero)
 
