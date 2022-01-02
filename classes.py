@@ -11,9 +11,11 @@ hero_g = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
 boss_keys = pygame.sprite.Group()
 background = pygame.sprite.Group()
+zones = pygame.sprite.Group()
 
 SPAWNPOINT = 0, 0
 BLOCK_SIDE = 32
+INFECTED = pygame.Color('olivedrab')
 
 
 # этот файл предназначен для написания классов
@@ -85,6 +87,8 @@ class Level:
                     RangeEnemy(x, y, el)
                 elif el == '?':
                     Key(x, y)
+                elif el == '~':
+                    InfectedZone(x, y)
                 elif el.isalpha():
                     MeleeEnemy(x, y, self.melees[el][0],
                                self.melees[el][1:])
@@ -102,12 +106,15 @@ class Overlay:
         self.font_file = 'data/BadFontPixel.ttf'
 
         self.w = 140
+        self.bar_block = (self.w - 20) // self.hero.full_charge
+        self.bar_h = 10
         self.h = self.image_key.get_height() + \
-                 self.image_hp.get_height() + 30
+            self.image_hp.get_height() + 40 + \
+            self.bar_h
         self.x = WIDTH - self.w
         self.y = HEIGHT - self.h
 
-    def show(self):
+    def render(self):
         bg = pygame.Surface((self.w, self.h))
         bg.fill(self.color)
 
@@ -126,6 +133,13 @@ class Overlay:
                                 self.image_hp.get_height())
         txt = font.render(str(self.hero.hp), True, (255, 255, 255))
         bg.blit(txt, (self.w - txt.get_width() - 10, dist_from_top))
+
+        # заряд
+        pygame.draw.rect(bg, (255, 0, 0), (10, self.h - 20,
+                                           self.w - 20, self.bar_h))
+        pygame.draw.rect(bg, (0, 255, 0), (10, self.h - 20,
+                                           self.bar_block * self.hero.charge,
+                                           self.bar_h))
 
         screen.blit(bg, (self.x, self.y))
 
@@ -182,6 +196,10 @@ class Hero(Unit):
         self.imm_start = 0
         self.keys = 0
 
+        self.charge = self.full_charge = 20
+        self.dot_period = 150
+        self.last_tick = 0
+
     def update(self):
         # смотрим, куда нужно пойти
         keys = pygame.key.get_pressed()
@@ -217,6 +235,11 @@ class Hero(Unit):
         if enm and pygame.sprite.collide_mask(self, enm):
             self.get_damage()
 
+        # заражённые области
+        inf = pygame.sprite.spritecollideany(self, zones)
+        if inf and pygame.sprite.collide_mask(self, inf):
+            self.get_dot()
+
         # не ходим сквозь стены и врагов по горизонтали
         self.rect.x += movement[0] * self.v
         wall = pygame.sprite.spritecollideany(self, obstacles)
@@ -246,6 +269,15 @@ class Hero(Unit):
             self.immortal = True
             self.imm_start = pygame.time.get_ticks()
             self.image.set_alpha(128)
+
+    def get_dot(self):
+        if self.charge == 0:
+            if pygame.time.get_ticks() - self.last_tick >= self.dot_period:
+                self.get_damage()
+        if not self.immortal:
+            if pygame.time.get_ticks() - self.last_tick >= self.dot_period:
+                self.charge -= 1
+                self.last_tick = pygame.time.get_ticks()
 
     def is_alive(self):
         return self.hp > 0
@@ -314,6 +346,16 @@ class RangeEnemy(Unit):
             self.shoot()
 
 
+class InfectedZone(Unit):
+    r = 63
+    image = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+    circle = pygame.draw.circle(image, INFECTED, (r, r), r)
+    image.set_alpha(63)
+
+    def __init__(self, x, y):
+        super().__init__(x, y, zones)
+
+
 class Bullet(Unit):
     image = load_image('bullet.png')
 
@@ -373,7 +415,7 @@ def main():
         screen.fill((0, 0, 0))
         background.draw(screen)
         all_sprites.draw(screen)
-        overlay.show()
+        overlay.render()
 
         pygame.display.flip()
         clock.tick(fps)
