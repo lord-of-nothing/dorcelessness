@@ -1,7 +1,8 @@
 import os
 import pygame
+from random import randint
 
-SIZE = WIDTH, HEIGHT = 600, 600
+SIZE = WIDTH, HEIGHT = 800, 800
 screen = pygame.display.set_mode(SIZE)
 
 all_sprites = pygame.sprite.Group()
@@ -13,7 +14,6 @@ boss_keys = pygame.sprite.Group()
 background = pygame.sprite.Group()
 zones = pygame.sprite.Group()
 
-SPAWNPOINT = 0, 0
 BLOCK_SIDE = 32
 INFECTED = pygame.Color('olivedrab')
 
@@ -47,6 +47,9 @@ def level_from_file(name):
     with open(fullname, encoding='utf-8') as f:
         level = [i[:-1] if i[-1] == '\n' else i for i in f]
 
+    if 'boss' in name:
+        return level, None
+
     # получаем информацию о траекториях врагов ближнего боя
     fullname = os.path.join('data', 'm_' + name)
     if not os.path.isfile(fullname):
@@ -65,12 +68,21 @@ def level_from_file(name):
     return level, melees
 
 
+def load_text(name):
+    fullname = os.path.join('data', name)
+    if not os.path.isfile(fullname):
+        raise FileNotFoundError
+    with open(fullname, encoding='utf-8') as f:
+        text = f.read().splitlines()
+    return text
+
+
 class Level:
     def __init__(self, filename):
         self.map, self.melees = level_from_file(filename)
 
     def load(self):
-        global SPAWNPOINT
+        spawnpoint = None
         for row in range(len(self.map)):
             for block in range(len(self.map[row])):
                 el = self.map[row][block]
@@ -80,7 +92,7 @@ class Level:
                     continue
                 Floor(x, y)
                 if el == '@':
-                    SPAWNPOINT = x, y
+                    spawnpoint = x, y
                 elif el == '#':
                     Wall(x, y)
                 elif el in "><^_%":
@@ -92,6 +104,84 @@ class Level:
                 elif el.isalpha():
                     MeleeEnemy(x, y, self.melees[el][0],
                                self.melees[el][1:])
+        if spawnpoint is None:
+            raise ValueError
+        return spawnpoint
+
+
+class BossRoom(Level):
+    def __init__(self, filename):
+        super().__init__(filename)
+
+
+class TextAttack:
+    def __init__(self, filename):
+        self.w = int(WIDTH * 0.8)
+        self.h = int(HEIGHT * 0.2)
+
+        self.font_size = int(HEIGHT * 0.1)
+        self.font = pygame.font.Font('data/BadFontPixel.ttf',
+                                     self.font_size)
+        self.bg_color = pygame.Color('darkslategray')
+        self.ahead_color = pygame.Color('white')
+        self.already_color = pygame.Color('azure4')
+        self.right_color = pygame.Color('aquamarine3')
+        self.wrong_color = pygame.Color('coral2')
+
+        self.text = load_text(filename)
+        self.str = self.text[0].split()
+        self.str_n = 0
+        self.word = 0
+        self.char = 0
+        self.wrong = False
+
+    def render(self, wrong):
+        bg = pygame.Surface((self.w, self.h))
+        bg.fill(self.bg_color)
+        word = self.str[self.word]
+        ch = self.char
+        alr = self.font.render(word[:ch], True, self.already_color)
+        if wrong:
+            wrng = self.font.render(word[ch], True, self.wrong_color)
+            ch += 1
+        now = self.font.render(word[ch:], True, self.ahead_color)
+
+        if wrong:
+            sum_w = alr.get_width() + wrng.get_width() + \
+                    now.get_width()
+        else:
+            sum_w = alr.get_width() + now.get_width()
+        left = self.w // 2 - sum_w // 2
+        top = self.h // 2 - alr.get_height() // 2
+        bg.blit(alr, (left, top))
+        if wrong:
+            bg.blit(wrng, (left + alr.get_width(), top))
+            bg.blit(now, (left + alr.get_width() + wrng.get_width(), top))
+        else:
+            bg.blit(now, (left + alr.get_width(), top))
+        screen.blit(bg, (int(WIDTH * 0.1), int(HEIGHT * 0.4)))
+
+    def get_press(self, key):
+        word = self.str[self.word]
+        try:
+            if chr(key) == word[self.char]:
+                self.char += 1
+                self.wrong = False
+            else:
+                self.wrong = True
+        except ValueError:
+            return True
+        if self.char == len(word):
+            self.word += 1
+            self.char = 0
+        if self.word == len(self.str):
+            self.word = 0
+            self.str_n += 1
+            if self.str_n == len(self.text):
+                self.str_n = 0
+            self.str = self.text[self.str_n].split()
+            return False
+        return True
 
 
 class Overlay:
@@ -186,8 +276,8 @@ class Floor(Unit):
 class Hero(Unit):
     image = load_image('hero.png')
 
-    def __init__(self):
-        super().__init__(*SPAWNPOINT, hero_g)
+    def __init__(self, x, y):
+        super().__init__(x, y, hero_g)
         self.v = 8
         self.hp = 4
         # получив урон, герой становится бессмертным
@@ -281,6 +371,11 @@ class Hero(Unit):
 
     def is_alive(self):
         return self.hp > 0
+
+    def start_attack(self):
+        """Исключительно для тестирования атаки, потом удалю."""
+        r = randint(0, 1357)
+        return r in (5, 13, 31, 135)
 
 
 class MeleeEnemy(Unit):
@@ -383,42 +478,5 @@ class Key(Unit):
         super().__init__(x, y, boss_keys)
 
 
-def main():
-    pygame.init()
-
-    zero_level = Level('test_level.txt')
-    zero_level.load()
-
-    hero = Hero()
-    cam = Camera()
-
-    overlay = Overlay(hero)
-
-    fps = 50
-    clock = pygame.time.Clock()
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-        if not hero.is_alive():
-            running = False
-
-        all_sprites.update()
-        cam.update(hero)
-        for sprite in all_sprites:
-            cam.apply(sprite)
-        for tile in background:
-            cam.apply(tile)
-
-        screen.fill((0, 0, 0))
-        background.draw(screen)
-        all_sprites.draw(screen)
-        overlay.render()
-
-        pygame.display.flip()
-        clock.tick(fps)
-
-
-main()
+if __name__ == '__main__':
+    print("you failed, now suffer")
