@@ -1,6 +1,8 @@
 import os
 import pygame
-from random import randint
+import math
+from random import choice, random
+
 
 SIZE = WIDTH, HEIGHT = 800, 800
 screen = pygame.display.set_mode(SIZE)
@@ -109,15 +111,47 @@ class Level:
         return spawnpoint
 
 
-class BossRoom(Level):
+class BossRoom:
     def __init__(self, filename):
-        super().__init__(filename)
+        self.map = level_from_file(filename)[0]
+        self.boss = None
+        self.hero_attacks = False
+
+    def load(self):
+        spawnpoint = None
+        for row in range(len(self.map)):
+            for block in range(len(self.map[row])):
+                el = self.map[row][block]
+                x = block * BLOCK_SIDE
+                y = row * BLOCK_SIDE
+                if el == '-':
+                    continue
+                Floor(x, y)
+                if el.isdigit():
+                    self.boss = Boss(x, y, el, self)
+                elif el == '@':
+                    spawnpoint = x, y
+                elif el == '#':
+                    Wall(x, y)
+        if self.boss is None or spawnpoint is None:
+            raise ValueError
+        return spawnpoint
+
+    def change_phase(self):
+        self.hero_attacks = not self.hero_attacks
+        self.boss.new_phase()
+
+    def get_phase(self):
+        return self.hero_attacks
 
 
 class TextAttack:
-    def __init__(self, filename):
+    def __init__(self, filename, level):
         self.w = int(WIDTH * 0.8)
         self.h = int(HEIGHT * 0.2)
+
+        self.level = level
+        self.inp_start = pygame.time.get_ticks()
 
         self.font_size = int(HEIGHT * 0.1)
         self.font = pygame.font.Font('data/BadFontPixel.ttf',
@@ -159,6 +193,11 @@ class TextAttack:
             bg.blit(now, (left + alr.get_width() + wrng.get_width(), top))
         else:
             bg.blit(now, (left + alr.get_width(), top))
+
+        b = 5  # толщина белой обводки
+        pygame.draw.rect(screen, (255, 255, 255), (int(WIDTH * 0.1) - b,
+                                                   int(HEIGHT * 0.4) - b,
+                                                   self.w + 2 * b, self.h + 2 * b))
         screen.blit(bg, (int(WIDTH * 0.1), int(HEIGHT * 0.4)))
 
     def get_press(self, key):
@@ -180,6 +219,7 @@ class TextAttack:
             if self.str_n == len(self.text):
                 self.str_n = 0
             self.str = self.text[self.str_n].split()
+            self.level.change_phase()
             return False
         return True
 
@@ -199,8 +239,8 @@ class Overlay:
         self.bar_block = (self.w - 20) // self.hero.full_charge
         self.bar_h = 10
         self.h = self.image_key.get_height() + \
-            self.image_hp.get_height() + 40 + \
-            self.bar_h
+                 self.image_hp.get_height() + 40 + \
+                 self.bar_h
         self.x = WIDTH - self.w
         self.y = HEIGHT - self.h
 
@@ -276,7 +316,7 @@ class Floor(Unit):
 class Hero(Unit):
     image = load_image('hero.png')
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, level=None):
         super().__init__(x, y, hero_g)
         self.v = 8
         self.hp = 4
@@ -290,7 +330,12 @@ class Hero(Unit):
         self.dot_period = 150
         self.last_tick = 0
 
+        self.level = level
+
     def update(self):
+        if self.level and self.level.hero_attacks:
+            return
+
         # смотрим, куда нужно пойти
         keys = pygame.key.get_pressed()
         movement = [0, 0]
@@ -373,9 +418,7 @@ class Hero(Unit):
         return self.hp > 0
 
     def start_attack(self):
-        """Исключительно для тестирования атаки, потом удалю."""
-        r = randint(0, 1357)
-        return r in (5, 13, 31, 135)
+        pass
 
 
 class MeleeEnemy(Unit):
@@ -407,13 +450,10 @@ class RangeEnemy(Unit):
         self.v_bullet = 10
         self.type = type
         if self.type == '<':
-            self.image = pygame.transform.flip(self.image, True, False)
             self.last_shot += 250
         elif self.type == '^':
-            self.image = pygame.transform.rotate(self.image, 90)
             self.last_shot += 500
         elif self.type == '_':
-            self.image = pygame.transform.rotate(self.image, -90)
             self.last_shot += 750
         elif self.type == '%':
             self.image = load_image('circular_range_enemy.png')
@@ -422,23 +462,97 @@ class RangeEnemy(Unit):
 
     def shoot(self):
         if self.type == '>' or self.type == '%':
-            Bullet(self, 1, 0, self.v_bullet)
+            Bullet(self, self.v_bullet, 0)
         if self.type == '<' or self.type == '%':
-            Bullet(self, -1, 0, self.v_bullet)
+            Bullet(self, -self.v_bullet, 0)
         if self.type == '^' or self.type == '%':
-            Bullet(self, 0, -1, self.v_bullet)
+            Bullet(self, 0, -self.v_bullet)
         if self.type == '_' or self.type == '%':
-            Bullet(self, 0, 1, self.v_bullet)
+            Bullet(self, 0, self.v_bullet)
         if self.type == '%':
-            Bullet(self, 1, 1, self.v_bullet)
-            Bullet(self, 1, -1, self.v_bullet)
-            Bullet(self, -1, 1, self.v_bullet)
-            Bullet(self, -1, -1, self.v_bullet)
+            Bullet(self, self.v_bullet, self.v_bullet)
+            Bullet(self, self.v_bullet, -self.v_bullet)
+            Bullet(self, -self.v_bullet, self.v_bullet)
+            Bullet(self, -self.v_bullet, -self.v_bullet)
         self.last_shot = pygame.time.get_ticks()
 
     def update(self):
         if pygame.time.get_ticks() - self.last_shot >= self.dt * 1000:
             self.shoot()
+
+
+class Boss(Unit):
+    def __init__(self, x, y, n, stage):
+        Boss.image = load_image(f"boss_{n}.png")
+        super().__init__(x, y, enemies)
+        self.stage = stage
+
+        self.phase_len = 10000
+        self.phase_start = self.last_shot = pygame.time.get_ticks()
+
+        self.shot_types = ['hero', 'round']
+        self.current_type = self.pick_attack()
+
+        self.dt = 500
+        self.last_shot = 0
+
+    def update(self):
+        if self.stage.hero_attacks:
+            if pygame.time.get_ticks() - self.phase_start >= self.phase_len:
+                self.stage.change_phase()
+                self.new_phase()
+            return
+
+        if pygame.time.get_ticks() - self.last_shot >= self.dt:
+            if self.current_type == 'hero':
+                self.dt = 500
+                self.attack_hero()
+            elif self.current_type == 'round':
+                self.dt = 1000
+                self.attack_around()
+            self.last_shot = pygame.time.get_ticks()
+
+        if pygame.time.get_ticks() - self.phase_start >= self.phase_len:
+            self.stage.change_phase()
+            self.phase_start = pygame.time.get_ticks()
+
+    def new_phase(self):
+        self.phase_start = pygame.time.get_ticks()
+        self.current_type = self.pick_attack()
+        bullets.empty()
+
+    def pick_attack(self):
+        return choice(self.shot_types)
+
+    def attack_around(self):
+        sq3 = math.sqrt(3)
+        v = 6
+        Bullet(self, v, 0)
+        Bullet(self, 0, v)
+        Bullet(self, -v, 0)
+        Bullet(self, 0, -v)
+
+        for _ in range(4):
+            mult_x = random() * choice([-1, 1])
+            vx = v * mult_x
+            vy = round(math.sqrt(v ** 2 - vx ** 2), 2) * choice([-1, 1])
+            Bullet(self, vx, vy)
+
+    def attack_hero(self):
+        """Выстрел в текущее местоположение героя.
+        Математика позаимствована со StackOverflow."""
+        hero = hero_g.sprites()[0]
+        h_mid = hero.rect.x + hero.rect.w // 2, \
+                hero.rect.y + hero.rect.h // 2
+        dir = (h_mid[0] - self.rect.x,
+               h_mid[1] - self.rect.y)
+        length = math.hypot(*dir)
+        if length == 0.0:
+            dir = (0, -1)
+        else:
+            dir = (dir[0] / length, dir[1] / length)
+        v = 5
+        Bullet(self, v * dir[0], v * dir[1])
 
 
 class InfectedZone(Unit):
@@ -454,18 +568,18 @@ class InfectedZone(Unit):
 class Bullet(Unit):
     image = load_image('bullet.png')
 
-    def __init__(self, sender, dirx, diry, v):
+    def __init__(self, sender, vx, vy):
         # изображение пули не меняет ориентацию в зависимости
         # от направления движения, т.к. планируется, что
         # в конечной версии пули будут центрально симметричными
         super().__init__(sender.rect.x + BLOCK_SIDE // 2,
                          sender.rect.y + 8, bullets)
-        self.v = v
-        self.dir = dirx, diry
+        self.vx = vx
+        self.vy = vy
 
     def update(self):
-        self.rect.x += self.dir[0] * self.v
-        self.rect.y += self.dir[1] * self.v
+        self.rect.x += self.vx
+        self.rect.y += self.vy
 
         if pygame.sprite.spritecollideany(self, obstacles):
             self.kill()
