@@ -1,7 +1,7 @@
 import os
 import pygame
 import math
-from random import choice, random
+from random import choice, uniform
 
 
 SIZE = WIDTH, HEIGHT = 800, 800
@@ -15,6 +15,8 @@ enemies = pygame.sprite.Group()
 boss_keys = pygame.sprite.Group()
 background = pygame.sprite.Group()
 zones = pygame.sprite.Group()
+doors = pygame.sprite.Group()
+exits = pygame.sprite.Group()
 
 BLOCK_SIDE = 32
 INFECTED = pygame.Color('olivedrab')
@@ -79,9 +81,20 @@ def load_text(name):
     return text
 
 
+def empty_groups():
+    for sp in all_sprites:
+        if sp in hero_g:
+            continue
+        sp.kill()
+    for tile in background:
+        tile.kill()
+    hero_g.add(all_sprites.sprites()[0])
+
+
 class Level:
     def __init__(self, filename):
         self.map, self.melees = level_from_file(filename)
+        self.completed = False
 
     def load(self):
         spawnpoint = None
@@ -95,6 +108,8 @@ class Level:
                 Floor(x, y)
                 if el == '@':
                     spawnpoint = x, y
+                elif el == 'D':
+                    Door(x, y)
                 elif el == '#':
                     Wall(x, y)
                 elif el in "><^_%":
@@ -116,6 +131,7 @@ class BossRoom:
         self.map = level_from_file(filename)[0]
         self.boss = None
         self.hero_attacks = False
+        self.completed = False
 
     def load(self):
         spawnpoint = None
@@ -129,6 +145,8 @@ class BossRoom:
                 Floor(x, y)
                 if el.isdigit():
                     self.boss = Boss(x, y, el, self)
+                elif el == 'D':
+                    Exit(x, y, self)
                 elif el == '@':
                     spawnpoint = x, y
                 elif el == '#':
@@ -141,9 +159,6 @@ class BossRoom:
         self.hero_attacks = not self.hero_attacks
         self.boss.new_phase()
 
-    def get_phase(self):
-        return self.hero_attacks
-
 
 class TextAttack:
     def __init__(self, filename, level):
@@ -154,7 +169,7 @@ class TextAttack:
         self.inp_start = pygame.time.get_ticks()
 
         self.font_size = int(HEIGHT * 0.1)
-        self.font = pygame.font.Font('data/BadFontPixel.ttf',
+        self.font = pygame.font.Font('data/LastPriestess.ttf',
                                      self.font_size)
         self.bg_color = pygame.Color('darkslategray')
         self.ahead_color = pygame.Color('white')
@@ -169,10 +184,16 @@ class TextAttack:
         self.char = 0
         self.wrong = False
 
+        self.boss = self.level.boss
+        self.boss.hp = self.get_text_len()
+
+    def get_text_len(self):
+        return sum([sum([1 for j in i if j != ' ']) for i in self.text])
+
     def render(self, wrong):
         bg = pygame.Surface((self.w, self.h))
         bg.fill(self.bg_color)
-        word = self.str[self.word]
+        word = self.str[self.word].upper()
         ch = self.char
         alr = self.font.render(word[:ch], True, self.already_color)
         if wrong:
@@ -205,6 +226,7 @@ class TextAttack:
         try:
             if chr(key) == word[self.char]:
                 self.char += 1
+                self.boss.hp -= 1
                 self.wrong = False
             else:
                 self.wrong = True
@@ -217,7 +239,8 @@ class TextAttack:
             self.word = 0
             self.str_n += 1
             if self.str_n == len(self.text):
-                self.str_n = 0
+                self.boss.kill()
+                return False
             self.str = self.text[self.str_n].split()
             self.level.change_phase()
             return False
@@ -227,6 +250,8 @@ class TextAttack:
 class Overlay:
     def __init__(self, hero):
         self.hero = hero
+        self.boss = None
+        self.max_hp = -1
         self.color = pygame.Color("gray31")
         self.image_hp = load_image('hp.png')
         self.image_key = load_image('key_large.png')
@@ -273,6 +298,26 @@ class Overlay:
 
         screen.blit(bg, (self.x, self.y))
 
+        if self.boss is None:
+            return
+
+        bar_h = 30
+        bg = pygame.Surface((self.max_hp + 12, bar_h))
+        bg.fill((0, 0, 0))
+        pygame.draw.rect(bg, (255, 255, 255),
+                         (0, 0, bg.get_width(), bg.get_height()), 3)
+        pygame.draw.rect(bg, (255, 255, 255), (6, 6, self.boss.hp, 18))
+
+        screen.blit(bg, (10, HEIGHT - 10 - bar_h))
+
+    def set_boss(self, boss):
+        self.boss = boss
+        self.max_hp = self.boss.hp
+
+    def remove_boss(self):
+        self.boss = None
+        self.max_hp = -1
+
 
 class Camera:
     def __init__(self):
@@ -305,18 +350,55 @@ class Wall(Unit):
         super().__init__(x, y, obstacles)
 
 
+class Door(Unit):
+    image = load_image('closed_door.png')
+
+    def __init__(self, x, y):
+        super().__init__(x, y, obstacles, doors)
+        self.hero = None
+        self.open = False
+
+    def update(self):
+        if self.hero is None:
+            if hero_g.sprites():
+                self.hero = hero_g.sprites()[0]
+            else:
+                return
+        if not self.open and self.hero.keys == 4:
+            self.image = load_image('open_door.png')
+            self.open = True
+
+
+class Exit(Unit):
+    image = load_image('closed_door.png')
+
+    def __init__(self, x, y, level):
+        super().__init__(x, y, obstacles, exits)
+        self.hero = hero_g.sprites()[0]
+        self.level = level
+        self.open = False
+        self.boss = None
+
+    def update(self):
+        if self.boss is None and self.level.boss is not None:
+            self.boss = self.level.boss
+        if not self.open and self.boss.hp == 0:
+            self.image = load_image('open_door.png')
+            self.open = True
+
+
 class Floor(Unit):
     image = load_image('floor.png')
 
     def __init__(self, x, y):
         super().__init__(x, y, background)
-        self.remove(all_sprites)
+        self.remove(all_sprites)  # чтобы ничего не перекрывалось
 
 
 class Hero(Unit):
     image = load_image('hero.png')
 
-    def __init__(self, x, y, level=None):
+    def __init__(self, x, y, level):
         super().__init__(x, y, hero_g)
         self.v = 8
         self.hp = 4
@@ -333,7 +415,7 @@ class Hero(Unit):
         self.level = level
 
     def update(self):
-        if self.level and self.level.hero_attacks:
+        if self.level.__class__ == BossRoom and self.level.hero_attacks:
             return
 
         # смотрим, куда нужно пойти
@@ -353,10 +435,6 @@ class Hero(Unit):
         if key and not self.immortal and keys[pygame.K_e]:
             self.keys += 1
             key.kill()
-            if self.keys == 4:
-                self.hp = 0
-            # пока что завершаем игру, если все ключи собраны
-            # ибо то, для чего нужны ключи, ещё не написано(
 
         # проверяем, не поймали ли пулю
         blt = pygame.sprite.spritecollideany(self, bullets)
@@ -387,6 +465,12 @@ class Hero(Unit):
         self.rect.y += movement[1] * self.v
         wall = pygame.sprite.spritecollideany(self, obstacles)
         if wall:
+            if wall in doors and not self.immortal and \
+                    self.keys == 4 and keys[pygame.K_e]:
+                self.level.completed = True
+            if wall in exits and self.level.boss.hp == 0 and \
+                    keys[pygame.K_e]:
+                self.hp = 0
             if movement[1] == 1:
                 self.rect.bottom = wall.rect.top
             elif movement[1] == -1:
@@ -416,9 +500,6 @@ class Hero(Unit):
 
     def is_alive(self):
         return self.hp > 0
-
-    def start_attack(self):
-        pass
 
 
 class MeleeEnemy(Unit):
@@ -486,6 +567,7 @@ class Boss(Unit):
         Boss.image = load_image(f"boss_{n}.png")
         super().__init__(x, y, enemies)
         self.stage = stage
+        self.hp = -1
 
         self.phase_len = 10000
         self.phase_start = self.last_shot = pygame.time.get_ticks()
@@ -496,19 +578,29 @@ class Boss(Unit):
         self.dt = 500
         self.last_shot = 0
 
+        self.shoot = False
+        self.timeout = 1350
+        self.timeout_start = pygame.time.get_ticks()
+
     def update(self):
         if self.stage.hero_attacks:
             if pygame.time.get_ticks() - self.phase_start >= self.phase_len:
                 self.stage.change_phase()
                 self.new_phase()
+                self.phase_start = pygame.time.get_ticks()
             return
 
-        if pygame.time.get_ticks() - self.last_shot >= self.dt:
+        if not self.shoot:
+            if pygame.time.get_ticks() - self.timeout_start >= self.timeout:
+                self.shoot = True
+            return
+
+        if self.shoot and pygame.time.get_ticks() - self.last_shot >= self.dt:
             if self.current_type == 'hero':
-                self.dt = 500
+                self.dt = 135
                 self.attack_hero()
             elif self.current_type == 'round':
-                self.dt = 1000
+                self.dt = 351
                 self.attack_around()
             self.last_shot = pygame.time.get_ticks()
 
@@ -519,21 +611,22 @@ class Boss(Unit):
     def new_phase(self):
         self.phase_start = pygame.time.get_ticks()
         self.current_type = self.pick_attack()
+        self.timeout_start = pygame.time.get_ticks()
+        self.shoot = False
         bullets.empty()
 
     def pick_attack(self):
         return choice(self.shot_types)
 
     def attack_around(self):
-        sq3 = math.sqrt(3)
-        v = 6
-        Bullet(self, v, 0)
-        Bullet(self, 0, v)
-        Bullet(self, -v, 0)
-        Bullet(self, 0, -v)
+        v = 4
+        # Bullet(self, v, 0)
+        # Bullet(self, 0, v)
+        # Bullet(self, -v, 0)
+        # Bullet(self, 0, -v)
 
-        for _ in range(4):
-            mult_x = random() * choice([-1, 1])
+        for _ in range(16):
+            mult_x = uniform(0.0, 1.0) * choice([-1, 1])
             vx = v * mult_x
             vy = round(math.sqrt(v ** 2 - vx ** 2), 2) * choice([-1, 1])
             Bullet(self, vx, vy)
@@ -551,7 +644,7 @@ class Boss(Unit):
             dir = (0, -1)
         else:
             dir = (dir[0] / length, dir[1] / length)
-        v = 5
+        v = 7
         Bullet(self, v * dir[0], v * dir[1])
 
 
