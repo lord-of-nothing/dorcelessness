@@ -73,7 +73,6 @@ def main():
 
         if not hero.is_alive():
             gameover.main()
-            return False
 
         if zero_boss.boss.hp == 0:
             overlay.remove_boss()
@@ -82,6 +81,7 @@ def main():
 
         if zero_boss.completed:
             running = False
+            return True
 
         all_sprites.update()
         cam.update(hero)

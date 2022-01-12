@@ -1,8 +1,5 @@
 import sys
-
 import classes
-from classes import empty_groups
-import pygame
 from classes import *
 
 
@@ -41,8 +38,6 @@ def draw_gameover():
 
 
 def main():
-    fps = 50
-
     running = True
     while running:
         for event in pygame.event.get():
