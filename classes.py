@@ -29,7 +29,8 @@ INFECTED = pygame.Color('olivedrab')
 # пока что используется симпатичный, но не соответствующий
 # тематике игры пак ассетов из интернета
 def load_image(name, colorkey=None):
-    fullname = os.path.join('data', name)
+    """Загружает картинку из файла."""
+    fullname = os.path.join('data', 'graphic', name)
     if not os.path.isfile(fullname):
         raise FileNotFoundError
     image = pygame.image.load(fullname)
@@ -44,8 +45,9 @@ def load_image(name, colorkey=None):
 
 
 def level_from_file(name):
+    """Отвечает за загрузку уровней из текстовых файлов."""
     # получаем карту уровня
-    fullname = os.path.join('data', name)
+    fullname = os.path.join('data', 'levels', name)
     if not os.path.isfile(fullname):
         raise FileNotFoundError
     with open(fullname, encoding='utf-8') as f:
@@ -55,7 +57,7 @@ def level_from_file(name):
         return level, None
 
     # получаем информацию о траекториях врагов ближнего боя
-    fullname = os.path.join('data', 'm_' + name)
+    fullname = os.path.join('data', 'levels', 'm_' + name)
     if not os.path.isfile(fullname):
         raise FileNotFoundError
     with open(fullname, encoding='utf-8') as f:
@@ -73,7 +75,8 @@ def level_from_file(name):
 
 
 def load_text(name):
-    fullname = os.path.join('data', name)
+    """Загрузка текста в боссфайт."""
+    fullname = os.path.join('data', 'levels', name)
     if not os.path.isfile(fullname):
         raise FileNotFoundError
     with open(fullname, encoding='utf-8') as f:
@@ -81,23 +84,34 @@ def load_text(name):
     return text
 
 
-def empty_groups():
+def load_font(name):
+    """Возвращает расположение файла шрифта."""
+    fullname = os.path.join('data', 'graphic', name)
+    return fullname
+
+
+def empty_groups(kill_hero=False):
+    """Очищает группы спрайтов на переходе от
+    уровня к боссу."""
     for sp in all_sprites:
-        if sp in hero_g:
+        if not kill_hero and sp in hero_g:
             continue
         sp.kill()
     for tile in background:
         tile.kill()
-    hero_g.add(all_sprites.sprites()[0])
+    if not kill_hero:
+        hero_g.add(all_sprites.sprites()[0])
 
 
 class Level:
+    """Класс основной части уровня."""
     def __init__(self, filename):
         self.map, self.melees = level_from_file(filename)
         self.completed = False
 
     def load(self):
         spawnpoint = None
+        # расстановка элементов на уровне
         for row in range(len(self.map)):
             for block in range(len(self.map[row])):
                 el = self.map[row][block]
@@ -127,6 +141,7 @@ class Level:
 
 
 class BossRoom:
+    """Класс битвы с боссом."""
     def __init__(self, filename):
         self.map = level_from_file(filename)[0]
         self.boss = None
@@ -161,15 +176,17 @@ class BossRoom:
 
 
 class TextAttack:
+    """Класс виджета текстового ввода
+    в бою с боссом."""
     def __init__(self, filename, level):
         self.w = int(WIDTH * 0.8)
         self.h = int(HEIGHT * 0.2)
 
         self.level = level
-        self.inp_start = pygame.time.get_ticks()
+        self.inp_start = pygame.time.get_ticks()  # начало атаки
 
         self.font_size = int(HEIGHT * 0.1)
-        self.font = pygame.font.Font('data/LastPriestess.ttf',
+        self.font = pygame.font.Font(load_font('LastPriestess.ttf'),
                                      self.font_size)
         self.bg_color = pygame.Color('darkslategray')
         self.ahead_color = pygame.Color('white')
@@ -191,6 +208,7 @@ class TextAttack:
         return sum([sum([1 for j in i if j != ' ']) for i in self.text])
 
     def render(self, wrong):
+        """Отрисовываем это окно."""
         bg = pygame.Surface((self.w, self.h))
         bg.fill(self.bg_color)
         word = self.str[self.word].upper()
@@ -222,6 +240,7 @@ class TextAttack:
         screen.blit(bg, (int(WIDTH * 0.1), int(HEIGHT * 0.4)))
 
     def get_press(self, key):
+        """Обработка нажатий клавиатуры."""
         word = self.str[self.word]
         try:
             if chr(key) == word[self.char]:
@@ -258,7 +277,7 @@ class Overlay:
         # не удалось найти информацию о лицензии данного шрифта
         # вроде как он бесплатный для личного использования
         # если окажется, что это не так, заменю на что-то другое
-        self.font_file = 'data/BadFontPixel.ttf'
+        self.font_file = load_font('BadFontPixel.ttf')
 
         self.w = 140
         self.bar_block = (self.w - 20) // self.hero.full_charge
@@ -406,6 +425,7 @@ class Hero(Unit):
         # на несколько секунд, и проходит через врагов
         self.immortal = False
         self.imm_start = 0
+        self.image.set_alpha(255)
         self.keys = 0
 
         self.charge = self.full_charge = 20
@@ -470,7 +490,7 @@ class Hero(Unit):
                 self.level.completed = True
             if wall in exits and self.level.boss.hp == 0 and \
                     keys[pygame.K_e]:
-                self.hp = 0
+                self.level.completed = True
             if movement[1] == 1:
                 self.rect.bottom = wall.rect.top
             elif movement[1] == -1:

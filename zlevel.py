@@ -1,5 +1,8 @@
 import sys
 import pygame
+
+import classes
+import gameover
 from classes import *
 
 
@@ -23,7 +26,8 @@ def main():
                 sys.exit()
 
         if not hero.is_alive():
-            sys.exit()
+            gameover.main()
+            return False
 
         if zero_level.completed:
             running = False
@@ -68,12 +72,16 @@ def main():
                     attack = text_field.get_press(event.key)
 
         if not hero.is_alive():
-            running = False
+            gameover.main()
+            return False
 
         if zero_boss.boss.hp == 0:
             overlay.remove_boss()
             zero_boss.hero_attacks = False
             attack = False
+
+        if zero_boss.completed:
+            running = False
 
         all_sprites.update()
         cam.update(hero)
@@ -91,5 +99,8 @@ def main():
         pygame.display.flip()
         clock.tick(fps)
 
+    return True
 
-main()
+
+if __name__ == '__main__':
+    main()
