@@ -1,15 +1,12 @@
 import sys
-import pygame
-
-import classes
 import gameover
 from classes import *
 
 
-def main():
+def run_level(n):
     pygame.init()
 
-    zero_level = Level('test_level.txt')
+    zero_level = Level(f'{n}_level.txt')
     sp = zero_level.load()
 
     hero = Hero(*sp, zero_level)
@@ -49,13 +46,13 @@ def main():
 
     empty_groups()
 
-    zero_boss = BossRoom('test_boss.txt')
+    zero_boss = BossRoom(f'{n}_boss.txt')
     sp = zero_boss.load()
 
     hero.level = zero_boss
     hero.rect.x, hero.rect.y = sp
 
-    text_field = TextAttack('t_test_boss.txt', zero_boss)
+    text_field = TextAttack(f't_{n}_boss.txt', zero_boss)
 
     overlay.set_boss(zero_boss.boss)
 
@@ -73,6 +70,7 @@ def main():
 
         if not hero.is_alive():
             gameover.main()
+            return False
 
         if zero_boss.boss.hp == 0:
             overlay.remove_boss()
@@ -81,7 +79,6 @@ def main():
 
         if zero_boss.completed:
             running = False
-            return True
 
         all_sprites.update()
         cam.update(hero)
@@ -98,9 +95,6 @@ def main():
             text_field.render(text_field.wrong)
         pygame.display.flip()
         clock.tick(fps)
+    empty_groups(True)
 
     return True
-
-
-if __name__ == '__main__':
-    main()

@@ -1,13 +1,16 @@
-import sys
-import zlevel
+from run_level import *
 import start_menu
 
 
 def main():
     start_menu.main()
-    res = zlevel.main()
+    res = run_level(0)
     while not res:
-        res = zlevel.main()
+        res = run_level(0)
+
+    res = run_level(1)
+    while not res:
+        res = run_level(1)
 
 
 if __name__ == '__main__':
