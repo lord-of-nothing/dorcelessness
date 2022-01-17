@@ -90,6 +90,10 @@ def load_font(name):
     return fullname
 
 
+RU_FONT_LOCATION = load_font('BadFontPixel.ttf')
+EN_FONT_LOCATION = load_font('LastPriestess.ttf')
+
+
 def empty_groups(kill_hero=False):
     """Очищает группы спрайтов на переходе от
     уровня к боссу."""
@@ -186,7 +190,7 @@ class TextAttack:
         self.inp_start = pygame.time.get_ticks()  # начало атаки
 
         self.font_size = int(HEIGHT * 0.1)
-        self.font = pygame.font.Font(load_font('LastPriestess.ttf'),
+        self.font = pygame.font.Font(EN_FONT_LOCATION,
                                      self.font_size)
         self.bg_color = pygame.Color('darkslategray')
         self.ahead_color = pygame.Color('white')
@@ -277,7 +281,7 @@ class Overlay:
         # не удалось найти информацию о лицензии данного шрифта
         # вроде как он бесплатный для личного использования
         # если окажется, что это не так, заменю на что-то другое
-        self.font_file = load_font('BadFontPixel.ttf')
+        self.font_file = RU_FONT_LOCATION
 
         self.w = 140
         self.bar_block = (self.w - 20) // self.hero.full_charge
@@ -362,6 +366,25 @@ class Unit(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
 
 
+class AnimatedUnit(Unit):
+    def __init__(self, x, y, columns, *group):
+        super().__init__(x, y, *group)
+        self.frames = []
+        self.cut_sheet(self.image, columns, 1)
+        self.cur_frame = 0
+        self.image = self.frames[self.cur_frame]
+        self.rect = self.rect.move(x, y)
+
+    def cut_sheet(self, sheet, columns, rows):
+        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
+                                sheet.get_height() // rows)
+        for j in range(rows):
+            for i in range(columns):
+                frame_location = (self.rect.w * i, self.rect.h * j)
+                self.frames.append(sheet.subsurface(pygame.Rect(
+                    frame_location, self.rect.size)))
+
+
 class Wall(Unit):
     image = load_image('wall.png')
 
@@ -414,11 +437,11 @@ class Floor(Unit):
         self.remove(all_sprites)  # чтобы ничего не перекрывалось
 
 
-class Hero(Unit):
+class Hero(AnimatedUnit):
     image = load_image('hero.png')
 
     def __init__(self, x, y, level):
-        super().__init__(x, y, hero_g)
+        super().__init__(x, y, 6, hero_g)
         self.v = 8
         self.hp = 4
         # получив урон, герой становится бессмертным
@@ -434,9 +457,21 @@ class Hero(Unit):
 
         self.level = level
 
+        self.last_frame_time = pygame.time.get_ticks()
+        self.change_frame_dt = 100
+
     def update(self):
         if self.level.__class__ == BossRoom and self.level.hero_attacks:
             return
+
+        if pygame.time.get_ticks() - self.change_frame_dt >= self.last_frame_time:
+            self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+            self.image = self.frames[self.cur_frame]
+            self.last_frame_time = pygame.time.get_ticks()
+            if self.immortal:
+                self.image.set_alpha(128)
+            else:
+                self.image.set_alpha(255)
 
         # смотрим, куда нужно пойти
         keys = pygame.key.get_pressed()

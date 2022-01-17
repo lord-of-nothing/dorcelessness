@@ -1,16 +1,18 @@
+import fullscreens
 from run_level import *
-import start_menu
 
 
 def main():
-    start_menu.main()
-    res = run_level(0)
-    while not res:
-        res = run_level(0)
+    fullscore = 0
+    pygame.init()
 
-    res = run_level(1)
-    while not res:
-        res = run_level(1)
+    fullscreens.show_start_menu()
+    for level_num in range(2):
+        res = run_level(level_num)
+        while res is None:
+            res = run_level(level_num)
+        fullscore += res
+        fullscreens.show_level_completed(level_num, res, fullscore)
 
 
 if __name__ == '__main__':

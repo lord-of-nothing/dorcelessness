@@ -1,6 +1,6 @@
 import sys
-import gameover
 from classes import *
+from fullscreens import show_gameover
 
 
 def run_level(n):
@@ -14,6 +14,8 @@ def run_level(n):
 
     overlay = Overlay(hero)
 
+    score = 322
+
     fps = 50
     clock = pygame.time.Clock()
     running = True
@@ -23,8 +25,8 @@ def run_level(n):
                 sys.exit()
 
         if not hero.is_alive():
-            gameover.main()
-            return False
+            show_gameover()
+            return None
 
         if zero_level.completed:
             running = False
@@ -43,6 +45,7 @@ def run_level(n):
 
         pygame.display.flip()
         clock.tick(fps)
+        score -= 0.02
 
     empty_groups()
 
@@ -69,8 +72,8 @@ def run_level(n):
                     attack = text_field.get_press(event.key)
 
         if not hero.is_alive():
-            gameover.main()
-            return False
+            show_gameover()
+            return None
 
         if zero_boss.boss.hp == 0:
             overlay.remove_boss()
@@ -94,7 +97,9 @@ def run_level(n):
         if attack:
             text_field.render(text_field.wrong)
         pygame.display.flip()
+        score -= 0.02
         clock.tick(fps)
+
     empty_groups(True)
 
-    return True
+    return int(score) if score > 0 else 0
