@@ -22,12 +22,6 @@ BLOCK_SIDE = 32
 INFECTED = pygame.Color('olivedrab')
 
 
-# этот файл предназначен для написания классов
-# и базовой проверки их работоспособности
-# используемые на данный момент спрайты будут заменены
-# как только всё остальное будет работать
-# пока что используется симпатичный, но не соответствующий
-# тематике игры пак ассетов из интернета
 def load_image(name, colorkey=None):
     """Загружает картинку из файла."""
     fullname = os.path.join('data', 'graphic', name)
@@ -163,7 +157,7 @@ class BossRoom:
                     continue
                 Floor(x, y)
                 if el.isdigit():
-                    self.boss = Boss(x, y, el, self)
+                    self.boss = Boss(x, y, el, 8, 1, self)
                 elif el == 'D':
                     Exit(x, y, self)
                 elif el == '@':
@@ -367,13 +361,14 @@ class Unit(pygame.sprite.Sprite):
 
 
 class AnimatedUnit(Unit):
-    def __init__(self, x, y, columns, *group):
+    def __init__(self, x, y, columns, rows, *group):
         super().__init__(x, y, *group)
         self.frames = []
-        self.cut_sheet(self.image, columns, 1)
+        self.cut_sheet(self.image, columns, rows)
         self.cur_frame = 0
         self.image = self.frames[self.cur_frame]
         self.rect = self.rect.move(x, y)
+        self.right = True
 
     def cut_sheet(self, sheet, columns, rows):
         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
@@ -441,7 +436,7 @@ class Hero(AnimatedUnit):
     image = load_image('hero.png')
 
     def __init__(self, x, y, level):
-        super().__init__(x, y, 6, hero_g)
+        super().__init__(x, y, 6, 1, hero_g)
         self.v = 8
         self.hp = 4
         # получив урон, герой становится бессмертным
@@ -460,6 +455,8 @@ class Hero(AnimatedUnit):
         self.last_frame_time = pygame.time.get_ticks()
         self.change_frame_dt = 100
 
+        self.score = 322
+
     def update(self):
         if self.level.__class__ == BossRoom and self.level.hero_attacks:
             return
@@ -467,7 +464,10 @@ class Hero(AnimatedUnit):
         if pygame.time.get_ticks() - self.change_frame_dt >= self.last_frame_time:
             self.cur_frame = (self.cur_frame + 1) % len(self.frames)
             self.image = self.frames[self.cur_frame]
+            if not self.right:
+                self.image = pygame.transform.flip(self.image, True, False)
             self.last_frame_time = pygame.time.get_ticks()
+            self.mask = pygame.mask.from_surface(self.image)
             if self.immortal:
                 self.image.set_alpha(128)
             else:
@@ -482,8 +482,12 @@ class Hero(AnimatedUnit):
             movement[1] = 1
         if keys[pygame.K_LEFT]:
             movement[0] = -1
+            if self.right:
+                self.right = False
         if keys[pygame.K_RIGHT]:
             movement[0] = 1
+            if not self.right:
+                self.right = True
 
         # сбор ключей
         key = pygame.sprite.spritecollideany(self, boss_keys)
@@ -543,6 +547,7 @@ class Hero(AnimatedUnit):
             self.immortal = True
             self.imm_start = pygame.time.get_ticks()
             self.image.set_alpha(128)
+            self.score *= 0.9
 
     def get_dot(self):
         if self.charge == 0:
@@ -557,30 +562,45 @@ class Hero(AnimatedUnit):
         return self.hp > 0
 
 
-class MeleeEnemy(Unit):
+class MeleeEnemy(AnimatedUnit):
     image = load_image('melee_enemy.png')
 
     def __init__(self, x, y, v, phases):
-        super().__init__(x, y, enemies)
+        super().__init__(x, y, 4, 1, enemies)
         self.v = v
         self.path = phases
         self.current_phase = 0
         self.phase_started = pygame.time.get_ticks()
 
+        self.last_frame_time = pygame.time.get_ticks()
+        self.change_frame_dt = 100
+
     def update(self):
+        if pygame.time.get_ticks() - self.change_frame_dt >= self.last_frame_time:
+            self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+            self.image = self.frames[self.cur_frame]
+            if not self.right:
+                self.image = pygame.transform.flip(self.image, True, False)
+            self.mask = pygame.mask.from_surface(self.image)
+            self.last_frame_time = pygame.time.get_ticks()
+
         movement = self.path[self.current_phase]
         self.rect.x += self.v * movement[0]
+        if movement[0] > 0:
+            self.right = True
+        elif movement[0] < 0:
+            self.right = False
         self.rect.y += self.v * movement[1]
         if pygame.time.get_ticks() - self.phase_started >= movement[2] * 1000:
             self.current_phase = (self.current_phase + 1) % len(self.path)
             self.phase_started = pygame.time.get_ticks()
 
 
-class RangeEnemy(Unit):
+class RangeEnemy(AnimatedUnit):
     image = load_image('range_enemy.png')
 
     def __init__(self, x, y, type):
-        super().__init__(x, y, enemies)
+        super().__init__(x, y, 9, 1, enemies)
         self.last_shot = pygame.time.get_ticks()
         self.dt = 1
         self.v_bullet = 10
@@ -592,9 +612,11 @@ class RangeEnemy(Unit):
         elif self.type == '_':
             self.last_shot += 750
         elif self.type == '%':
-            self.image = load_image('circular_range_enemy.png')
             self.last_shot += 1000
             self.v_bullet = 5
+
+        self.last_frame_time = pygame.time.get_ticks()
+        self.change_frame_dt = 135
 
     def shoot(self):
         if self.type == '>' or self.type == '%':
@@ -613,14 +635,20 @@ class RangeEnemy(Unit):
         self.last_shot = pygame.time.get_ticks()
 
     def update(self):
+        if pygame.time.get_ticks() - self.change_frame_dt >= self.last_frame_time:
+            self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+            self.image = self.frames[self.cur_frame]
+            self.mask = pygame.mask.from_surface(self.image)
+            self.last_frame_time = pygame.time.get_ticks()
+
         if pygame.time.get_ticks() - self.last_shot >= self.dt * 1000:
             self.shoot()
 
 
-class Boss(Unit):
-    def __init__(self, x, y, n, stage):
+class Boss(AnimatedUnit):
+    def __init__(self, x, y, n, cols, rows, stage):
         Boss.image = load_image(f"boss_{n}.png")
-        super().__init__(x, y, enemies)
+        super().__init__(x, y, cols, rows, enemies)
         self.stage = stage
         self.hp = -1
 
@@ -637,7 +665,18 @@ class Boss(Unit):
         self.timeout = 1350
         self.timeout_start = pygame.time.get_ticks()
 
+        self.last_frame_time = pygame.time.get_ticks()
+        self.change_frame_dt = 100
+
     def update(self):
+        if pygame.time.get_ticks() - self.change_frame_dt >= self.last_frame_time:
+            self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+            self.image = self.frames[self.cur_frame]
+            if not self.right:
+                self.image = pygame.transform.flip(self.image, True, False)
+            self.mask = pygame.mask.from_surface(self.image)
+            self.last_frame_time = pygame.time.get_ticks()
+
         if self.stage.hero_attacks:
             if pygame.time.get_ticks() - self.phase_start >= self.phase_len:
                 self.stage.change_phase()

@@ -14,8 +14,6 @@ def run_level(n):
 
     overlay = Overlay(hero)
 
-    score = 322
-
     fps = 50
     clock = pygame.time.Clock()
     running = True
@@ -45,7 +43,7 @@ def run_level(n):
 
         pygame.display.flip()
         clock.tick(fps)
-        score -= 0.02
+        hero.score -= 0.02
 
     empty_groups()
 
@@ -97,9 +95,9 @@ def run_level(n):
         if attack:
             text_field.render(text_field.wrong)
         pygame.display.flip()
-        score -= 0.02
+        hero.score -= 0.02
         clock.tick(fps)
 
     empty_groups(True)
 
-    return int(score) if score > 0 else 0
+    return int(hero.score) if hero.score > 0 else 0
