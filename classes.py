@@ -85,7 +85,7 @@ def load_font(name):
 
 
 RU_FONT_LOCATION = load_font('BadFontPixel.ttf')
-EN_FONT_LOCATION = load_font('LastPriestess.ttf')
+EN_FONT_LOCATION = load_font('nokiafc22.ttf')
 
 
 def empty_groups(kill_hero=False):
