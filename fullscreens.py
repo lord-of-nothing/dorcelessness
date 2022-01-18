@@ -1,5 +1,8 @@
 import csv
 import sys
+
+import pygame.font
+
 from classes import *
 
 
@@ -64,6 +67,10 @@ def show_start_menu():
         bg = load_image('start_menu_bg.png')
         screen.blit(bg, (0, 0))
 
+        font = pygame.font.Font(load_font('Extrude.ttf'), 135)
+        text = font.render("L O R I C", True, pygame.Color('seashell1'))
+        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, int(HEIGHT * 0.13)))
+
         font_ru = pygame.font.Font(RU_FONT_LOCATION, 30)
         invite_0 = font_ru.render("для начала игры нажмите ", True, (240, 240, 240))
         font_en = pygame.font.Font(EN_FONT_LOCATION, 35)
@@ -71,9 +78,16 @@ def show_start_menu():
 
         full_width = invite_0.get_width() + invite_1.get_width()
         x = WIDTH // 2 - full_width // 2
-        y = int(HEIGHT * 0.1)
+        y = int(HEIGHT * 0.85)
         screen.blit(invite_0, (x, y))
         screen.blit(invite_1, (x + invite_0.get_width(), y - 12))
+
+        rec_label_ru = font_ru.render(" -- лучшие результаты", True, (240, 240, 240))
+        rec_label_en = font_en.render("R", True, (255, 255, 255))
+        y = int(HEIGHT * 0.92)
+        left_edge = WIDTH // 2 - (rec_label_en.get_width() + rec_label_ru.get_width()) // 2
+        screen.blit(rec_label_en, (left_edge, y - 12))
+        screen.blit(rec_label_ru, (left_edge + rec_label_en.get_width(), y))
 
         pygame.display.flip()
 
@@ -143,7 +157,7 @@ def get_username():
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RETURN:
-                    return name if name else 'Knight'
+                    return name if name else 'Loric'
                 elif event.key == pygame.K_BACKSPACE and name:
                     name = name[:-1]
                 elif event.unicode.lower() in allowed and len(name) < 14:
@@ -160,7 +174,7 @@ def get_username():
         if name:
             text = font.render(name, True, (234, 234, 234))
         else:
-            text = font.render('Knight', True, (169, 169, 169))
+            text = font.render('Loric', True, (169, 169, 169))
         screen.blit(text, (int(WIDTH * 0.11), int(HEIGHT * 0.45)))
         pygame.draw.line(screen, (234, 234, 234), (int(WIDTH * 0.1), int(HEIGHT * 0.55)),
                          (int(WIDTH * 0.9), int(HEIGHT * 0.55)))
@@ -211,5 +225,36 @@ def show_records():
             text = font.render(str(data[i][1]), True, (255, 255, 255))
             screen.blit(text, (score_start, y))
             y += int(WIDTH * 0.1)
+
+        pygame.display.flip()
+
+
+def show_game_final(score):
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                return
+
+        screen.fill((255, 255, 255))
+
+        font = pygame.font.Font(RU_FONT_LOCATION, 50)
+        text = font.render("Все уровни пройдены!", True, (0, 0, 0))
+        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, int(HEIGHT * 0.13)))
+
+        pygame.draw.line(screen, (0, 0, 0), (int(WIDTH * 0.1), int(HEIGHT * 0.2)),
+                         (int(WIDTH * 0.9), int(HEIGHT * 0.2)))
+
+        text = font.render("Ваш счет: ", True, (0, 0, 0))
+        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, int(HEIGHT * 0.31)))
+
+        font = pygame.font.Font(RU_FONT_LOCATION, 23)
+        text = font.render("Нажмите любую клавишу, чтобы выйти в главное меню", True, (0, 0, 0))
+        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, int(HEIGHT * 0.9)))
+
+        font = pygame.font.Font(EN_FONT_LOCATION, 42)
+        text = font.render(str(score), True, (0, 0, 0))
+        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, int(HEIGHT * 0.4)))
 
         pygame.display.flip()
