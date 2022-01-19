@@ -455,7 +455,7 @@ class Hero(AnimatedUnit):
         self.last_frame_time = pygame.time.get_ticks()
         self.change_frame_dt = 100
 
-        self.score = 322
+        self.score = 666
 
     def update(self):
         if self.level.__class__ == BossRoom and self.level.hero_attacks:

@@ -6,11 +6,13 @@ from run_level import *
 def main():
     fullscore = 0
     pygame.init()
+    pygame.display.set_caption('loric')
+    pygame.mouse.set_visible(False)
 
     while True:
         fullscreens.show_start_menu()
         username = fullscreens.get_username()
-        for level_num in range(0):
+        for level_num in range(2):
             res = run_level(level_num)
             while res is None:
                 res = run_level(level_num)
