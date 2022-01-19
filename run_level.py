@@ -87,6 +87,9 @@ def run_level(n):
             cam.apply(sprite)
         for tile in background:
             cam.apply(tile)
+        if zero_boss.boss.last_hero_pos is not None:
+            zero_boss.boss.last_hero_pos[0] += cam.dx
+            zero_boss.boss.last_hero_pos[1] += cam.dy
 
         screen.fill((0, 0, 0))
         background.draw(screen)

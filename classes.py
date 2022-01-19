@@ -1,4 +1,6 @@
 import os
+import random
+
 import pygame
 import math
 from random import choice, uniform
@@ -655,7 +657,7 @@ class Boss(AnimatedUnit):
         self.phase_len = 10000
         self.phase_start = self.last_shot = pygame.time.get_ticks()
 
-        self.shot_types = ['hero', 'round']
+        self.shot_types = ['hero', 'round', 'poison']
         self.current_type = self.pick_attack()
 
         self.dt = 500
@@ -667,6 +669,9 @@ class Boss(AnimatedUnit):
 
         self.last_frame_time = pygame.time.get_ticks()
         self.change_frame_dt = 100
+
+        self.hero = hero_g.sprites()[0]
+        self.last_hero_pos = None
 
     def update(self):
         if pygame.time.get_ticks() - self.change_frame_dt >= self.last_frame_time:
@@ -696,10 +701,16 @@ class Boss(AnimatedUnit):
             elif self.current_type == 'round':
                 self.dt = 351
                 self.attack_around()
+            elif self.current_type == 'poison':
+                self.dt = 255
+                self.attack_poison()
             self.last_shot = pygame.time.get_ticks()
 
         if pygame.time.get_ticks() - self.phase_start >= self.phase_len:
             self.stage.change_phase()
+            for sprite in zones.sprites():
+                sprite.kill()
+            self.last_hero_pos = None
             self.phase_start = pygame.time.get_ticks()
 
     def new_phase(self):
@@ -728,9 +739,8 @@ class Boss(AnimatedUnit):
     def attack_hero(self):
         """Выстрел в текущее местоположение героя.
         Математика позаимствована со StackOverflow."""
-        hero = hero_g.sprites()[0]
-        h_mid = hero.rect.x + hero.rect.w // 2, \
-                hero.rect.y + hero.rect.h // 2
+        h_mid = self.hero.rect.x + self.hero.rect.w // 2, \
+                self.hero.rect.y + self.hero.rect.h // 2
         dir = (h_mid[0] - self.rect.x,
                h_mid[1] - self.rect.y)
         length = math.hypot(*dir)
@@ -741,6 +751,11 @@ class Boss(AnimatedUnit):
         v = 7
         Bullet(self, v * dir[0], v * dir[1])
 
+    def attack_poison(self):
+        if self.last_hero_pos is not None:
+            InfectedZone(*self.last_hero_pos, random.randrange(5, 31))
+        self.last_hero_pos = [self.hero.rect.x, self.hero.rect.y]
+
 
 class InfectedZone(Unit):
     r = 63
@@ -748,8 +763,15 @@ class InfectedZone(Unit):
     circle = pygame.draw.circle(image, INFECTED, (r, r), r)
     image.set_alpha(63)
 
-    def __init__(self, x, y):
+    def __init__(self, x, y, custom_r=None):
         super().__init__(x, y, zones)
+        if custom_r:
+            self.image = pygame.Surface((custom_r * 2,
+                                         custom_r * 2), pygame.SRCALPHA)
+            circle = pygame.draw.circle(self.image, INFECTED,
+                                        (custom_r, custom_r), custom_r)
+            self.mask = pygame.mask.from_surface(self.image)
+            self.image.set_alpha(63)
 
 
 class Bullet(Unit):
