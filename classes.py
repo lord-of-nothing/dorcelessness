@@ -3,7 +3,6 @@ import random
 
 import pygame
 import math
-from random import choice, uniform
 
 
 SIZE = WIDTH, HEIGHT = 800, 800
@@ -662,7 +661,7 @@ class Boss(AnimatedUnit):
         self.phase_len = 10000
         self.phase_start = self.last_shot = pygame.time.get_ticks()
 
-        self.shot_types = ['hero', 'round', 'poison', 'hero', 'round']
+        self.shot_types = ['hero', 'round', 'poison', 'random']
         self.current_type = self.pick_attack()
 
         self.dt = 500
@@ -709,9 +708,14 @@ class Boss(AnimatedUnit):
             elif self.current_type == 'poison':
                 self.dt = 255
                 self.attack_poison()
+            elif self.current_type == 'random':
+                self.dt = 65
+                self.attack_random()
             self.last_shot = pygame.time.get_ticks()
 
         if pygame.time.get_ticks() - self.phase_start >= self.phase_len:
+            for sprite in bullets.sprites():
+                sprite.kill()
             self.stage.change_phase()
             for sprite in zones.sprites():
                 sprite.kill()
@@ -723,10 +727,9 @@ class Boss(AnimatedUnit):
         self.current_type = self.pick_attack()
         self.timeout_start = pygame.time.get_ticks()
         self.shoot = False
-        bullets.empty()
 
     def pick_attack(self):
-        return choice(self.shot_types)
+        return random.choice(self.shot_types)
 
     def attack_around(self):
         v = 4
@@ -736,9 +739,9 @@ class Boss(AnimatedUnit):
         # Bullet(self, 1, -v)
 
         for _ in range(16):
-            mult_x = uniform(0.0, 1.0) * choice([-1, 1])
+            mult_x = random.uniform(0.0, 1.0) * random.choice([-1, 1])
             vx = v * mult_x
-            vy = round(math.sqrt(v ** 2 - vx ** 2), 2) * choice([-1, 1])
+            vy = round(math.sqrt(v ** 2 - vx ** 2), 2) * random.choice([-1, 1])
             Bullet(self, vx, vy)
 
     def attack_hero(self):
@@ -760,6 +763,15 @@ class Boss(AnimatedUnit):
         if self.last_hero_pos is not None:
             InfectedZone(*self.last_hero_pos, random.randrange(5, 31))
         self.last_hero_pos = [self.hero.rect.x, self.hero.rect.y]
+
+    def attack_random(self):
+        dir_x = random.uniform(-1.0, 1.0)
+        dir_y = random.uniform(-1.0, 1.0)
+        while not dir_x and not dir_y:
+            dir_x = random.uniform(-1.0, 1.0)
+            dir_y = random.uniform(-1.0, 1.0)
+        v = random.randint(5, 10)
+        Bullet(self, v * dir_x, v * dir_y)
 
 
 class InfectedZone(Unit):
