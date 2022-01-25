@@ -12,7 +12,7 @@ def main():
     while True:
         fullscreens.show_start_menu()
         username = fullscreens.get_username()
-        for level_num in range(2):
+        for level_num in range(3, 4):
             res = run_level(level_num)
             while res is None:
                 res = run_level(level_num)

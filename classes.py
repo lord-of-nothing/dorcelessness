@@ -40,20 +40,23 @@ def load_image(name, colorkey=None):
     return image
 
 
-def level_from_file(name):
+def level_from_file(n, boss=False):
     """Отвечает за загрузку уровней из текстовых файлов."""
     # получаем карту уровня
-    fullname = os.path.join('data', 'levels', name)
+    if boss:
+        fullname = os.path.join('data', 'levels', str(n), 'boss.txt')
+    else:
+        fullname = os.path.join('data', 'levels', str(n), 'level.txt')
     if not os.path.isfile(fullname):
         raise FileNotFoundError
     with open(fullname, encoding='utf-8') as f:
         level = [i[:-1] if i[-1] == '\n' else i for i in f]
 
-    if 'boss' in name:
+    if boss:
         return level, None
 
     # получаем информацию о траекториях врагов ближнего боя
-    fullname = os.path.join('data', 'levels', 'm_' + name)
+    fullname = os.path.join('data', 'levels', str(n), 'melees.txt')
     if not os.path.isfile(fullname):
         raise FileNotFoundError
     with open(fullname, encoding='utf-8') as f:
@@ -70,9 +73,9 @@ def level_from_file(name):
     return level, melees
 
 
-def load_text(name):
+def load_text(n):
     """Загрузка текста в боссфайт."""
-    fullname = os.path.join('data', 'levels', name)
+    fullname = os.path.join('data', 'levels', str(n), 'text.txt')
     if not os.path.isfile(fullname):
         raise FileNotFoundError
     with open(fullname, encoding='utf-8') as f:
@@ -105,8 +108,8 @@ def empty_groups(kill_hero=False):
 
 class Level:
     """Класс основной части уровня."""
-    def __init__(self, filename):
-        self.map, self.melees = level_from_file(filename)
+    def __init__(self, n):
+        self.map, self.melees = level_from_file(n)
         self.completed = False
 
     def load(self):
@@ -142,8 +145,8 @@ class Level:
 
 class BossRoom:
     """Класс битвы с боссом."""
-    def __init__(self, filename):
-        self.map = level_from_file(filename)[0]
+    def __init__(self, n):
+        self.map = level_from_file(n, True)[0]
         self.boss = None
         self.hero_attacks = False
         self.completed = False
@@ -166,6 +169,8 @@ class BossRoom:
                     spawnpoint = x, y
                 elif el == '#':
                     Wall(x, y)
+                elif el in "><^_%":
+                    RangeEnemy(x, y, el)
         if self.boss is None or spawnpoint is None:
             raise ValueError
         return spawnpoint
@@ -178,7 +183,7 @@ class BossRoom:
 class TextAttack:
     """Класс виджета текстового ввода
     в бою с боссом."""
-    def __init__(self, filename, level):
+    def __init__(self, n, level):
         self.w = int(WIDTH * 0.8)
         self.h = int(HEIGHT * 0.2)
 
@@ -194,7 +199,7 @@ class TextAttack:
         self.right_color = pygame.Color('aquamarine3')
         self.wrong_color = pygame.Color('coral2')
 
-        self.text = load_text(filename)
+        self.text = load_text(n)
         self.str = self.text[0].split()
         self.str_n = 0
         self.word = 0
@@ -657,7 +662,7 @@ class Boss(AnimatedUnit):
         self.phase_len = 10000
         self.phase_start = self.last_shot = pygame.time.get_ticks()
 
-        self.shot_types = ['hero', 'round', 'poison']
+        self.shot_types = ['hero', 'round', 'poison', 'hero', 'round']
         self.current_type = self.pick_attack()
 
         self.dt = 500
@@ -725,10 +730,10 @@ class Boss(AnimatedUnit):
 
     def attack_around(self):
         v = 4
-        # Bullet(self, v, 0)
-        # Bullet(self, 0, v)
-        # Bullet(self, -v, 0)
-        # Bullet(self, 0, -v)
+        # Bullet(self, v, 1)
+        # Bullet(self, 1, v)
+        # Bullet(self, -v, 1)
+        # Bullet(self, 1, -v)
 
         for _ in range(16):
             mult_x = uniform(0.0, 1.0) * choice([-1, 1])

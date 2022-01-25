@@ -6,7 +6,7 @@ from fullscreens import show_gameover
 def run_level(n):
     pygame.init()
 
-    zero_level = Level(f'{n}_level.txt')
+    zero_level = Level(n)
     sp = zero_level.load()
 
     hero = Hero(*sp, zero_level)
@@ -47,13 +47,13 @@ def run_level(n):
 
     empty_groups()
 
-    zero_boss = BossRoom(f'{n}_boss.txt')
+    zero_boss = BossRoom(n)
     sp = zero_boss.load()
 
     hero.level = zero_boss
     hero.rect.x, hero.rect.y = sp
 
-    text_field = TextAttack(f't_{n}_boss.txt', zero_boss)
+    text_field = TextAttack(n, zero_boss)
 
     overlay.set_boss(zero_boss.boss)
 
