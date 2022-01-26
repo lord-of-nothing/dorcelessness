@@ -253,6 +253,7 @@ class TextAttack:
                 self.wrong = False
             else:
                 self.wrong = True
+                hero_g.sprites()[0].score -= 5
         except ValueError:
             return True
         if self.char == len(word):
@@ -461,7 +462,7 @@ class Hero(AnimatedUnit):
         self.last_frame_time = pygame.time.get_ticks()
         self.change_frame_dt = 100
 
-        self.score = 666
+        self.score = 315
 
     def update(self):
         if self.level.__class__ == BossRoom and self.level.hero_attacks:
